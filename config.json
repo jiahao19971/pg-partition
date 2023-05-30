@@ -1,0 +1,27 @@
+{
+    "table": {
+        "required": false,
+        "type": "list",
+        "schema": {
+            "type": "dict",
+            "schema": {
+                "name": {
+                    "required": true,
+                    "type": "string"
+                },
+                "schema": {
+                    "required": true,
+                    "type": "string"
+                },
+                "column": {
+                    "required": true,
+                    "type": "dict"
+                },
+                "partition": {
+                    "required": true,
+                    "type": "string"
+                }
+            }
+        }
+    }
+}

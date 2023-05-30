@@ -1,0 +1,9 @@
+version: '3.8'
+services:
+  database:
+    container_name: pg_partition
+    image: postgres:11.1 # use latest official postgres version
+    env_file:
+      - .env # configure postgres
+    ports:
+      - 5432:5432

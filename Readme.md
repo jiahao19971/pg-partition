@@ -1,0 +1,1 @@
+Create a job schedular to check regularly on the max date and if the partition exist, if not then create a partition 
