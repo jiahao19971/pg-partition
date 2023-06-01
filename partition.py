@@ -284,7 +284,7 @@ def addon_partition(cur, table):
             'schema': table['schema']
         }
 
-        additional_partitioning(min_table, cur, table, years)
+        additional_partitioning(min_table, cur, table, min_check_year)
 
 def main():
     server = {
