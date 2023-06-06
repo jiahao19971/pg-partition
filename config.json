@@ -20,6 +20,14 @@
                 "partition": {
                     "required": true,
                     "type": "string"
+                },
+                "pkey": {
+                    "required": true,
+                    "type": "string"
+                },
+                "additional_index_name": {
+                    "required": false,
+                    "type": "dict"
                 }
             }
         }

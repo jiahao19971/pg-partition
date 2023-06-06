@@ -41,12 +41,26 @@ class DBLoader():
             raise ValueError(e)
 
     def connect(self):
-        conn = psycopg2.connect(
-            database=self.database,
-            user=self.db_user,
-            host=self.server['local_bind_host'],
-            port=self.server['local_bind_port'],
-            password=self.db_pass
-        )
+        try:
+            conn = psycopg2.connect(
+                        database=self.database,
+                        user=self.db_user,
+                        host=self.server['local_bind_host'],
+                        port=self.server['local_bind_port'],
+                        password=self.db_pass,
+                        sslmode=os.environ['DB_SSLMODE'],
+                        sslrootcert=os.environ['DB_SSLROOTCERT'],
+                        sslcert=os.environ['DB_SSLCERT'],
+                        sslkey=os.environ['DB_SSLKEY']
+                    )
+        except:
+            conn = psycopg2.connect(
+                database=self.database,
+                user=self.db_user,
+                host=self.server['local_bind_host'],
+                port=self.server['local_bind_port'],
+                password=self.db_pass
+            )
+        
 
         return conn

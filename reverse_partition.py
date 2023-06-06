@@ -1,5 +1,5 @@
 from dotenv import load_dotenv
-import sys, json, yaml
+import sys, json, yaml, os
 from db.db import DBLoader
 from cerberus import Validator
 
@@ -101,10 +101,10 @@ def check_combine_table(table, cur):
 
 def main():
     server = {
-        'local_bind_host': '0.0.0.0',
+        'local_bind_host': os.environ['DB_HOST'],
         'local_bind_port': 5432,
     }
-    conn = DBLoader(server, 'postgres')
+    conn = DBLoader(server, 'kfit_app_staging')
     conn = conn.connect()
 
     cur = conn.cursor()
@@ -113,25 +113,31 @@ def main():
 
     for table in config['table']:
 
+        cur.execute(f"SET search_path TO '{table['schema']}';")
+
         partitioning = check_table_partition(table, cur)
 
         if not partitioning:
-            cur.execute(f"SET search_path TO '{table['schema']}';")
+            print("Reverting index back to 1 table")
             collist = []
+            colname = []
             for columnname in list(table['column'].keys()):
                 newval = f"{columnname} {table['column'][columnname]}"
                 collist.append(newval)
+                colname.append(columnname)
 
             table_combine = check_combine_table(table, cur)
 
             create_table = f"""
                 CREATE TABLE {table['name']}_new (
-                    {", ".join(collist)})
+                    {", ".join(collist)},
+                    primary key ({table['pkey']})    
+                )
             """
 
             cur.execute(create_table)
             for tab in table_combine:
-                insert = f"INSERT INTO {table['name']}_new SELECT * FROM {tab};"
+                insert = f"INSERT INTO {table['name']}_new SELECT {','.join(colname)} FROM {tab};"
                 cur.execute(insert)
 
             
@@ -140,12 +146,24 @@ def main():
             """
 
             alter_name = f"ALTER TABLE {table['name']}_new RENAME TO {table['name']};"
+            alter_idx = f"ALTER INDEX {table['name']}_new_pkey RENAME TO {table['name']}_pkey; "
 
             run_analyze = f"ANALYZE {table['name']};"
 
             cur.execute(drop_partitioning)
             cur.execute(alter_name)
+            cur.execute(alter_idx)
             cur.execute(run_analyze)
+
+            if 'additional_index_name' in table:
+                idxColList = []
+                for idx_col in list(table['additional_index_name'].keys()):
+                    newval = f"CREATE INDEX {idx_col} ON {table['name']} {table['additional_index_name'][idx_col]};"
+                    idxColList.append(newval)
+
+                for idx in idxColList:
+                   print(idx)
+                   cur.execute(idx)
 
     conn.commit()
     conn.close()
