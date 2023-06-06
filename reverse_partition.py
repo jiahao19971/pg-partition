@@ -162,8 +162,7 @@ def main():
                     idxColList.append(newval)
 
                 for idx in idxColList:
-                   print(idx)
-                   cur.execute(idx)
+                    cur.execute(idx)
 
     conn.commit()
     conn.close()
