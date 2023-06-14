@@ -28,6 +28,10 @@
                 "additional_index_name": {
                     "required": false,
                     "type": "dict"
+                },
+                "interval": {
+                    "required": true,
+                    "type": "integer"
                 }
             }
         }

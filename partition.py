@@ -1,85 +1,55 @@
 from dotenv import load_dotenv
-import sys, json, yaml, re, os
+import yaml, re, os
 from db.db import DBLoader
-from cerberus import Validator
+from common.common import _open_config
+from common.query import (
+    create_table_with_partitioning, 
+    alter_table_constraint, 
+    attach_table_partition, 
+    create_partition_of_table, 
+    create_default_table_for_partition, 
+    create_index, 
+    move_rows_to_another_table, 
+    run_analyze, detach_partition, 
+    attach_default_partition, 
+    table_check, 
+    default_table_check, 
+    rename_table, 
+    alter_table_owner, 
+    drop_table_constraint,
+    drop_table_index,
+    alter_table_index,
+    create_unique_index,
+    alter_sequence_owner,
+    alter_sequence_owned_by,
+    get_table_index,
+    get_min_max_table,
+    alter_replica_identity,
+    set_search_path
+)
 
 load_dotenv()
 
-def print_psycopg2_exception(err):
-    err_type, err_obj, traceback = sys.exc_info()
-
-    # get the line number when exception occured
-    line_num = traceback.tb_lineno
-
-    print ("\npsycopg2 ERROR:", err, "on line number:", line_num)
-    print ("psycopg2 traceback:", traceback, "-- type:", err_type)
-
-    # psycopg2 extensions.Diagnostics object attribute
-    print ("\nextensions.Diagnostics:", err.diag)
-
-    # print the pgcode and pgerror exceptions
-    print ("pgerror:", err.pgerror)
-    print ("pgcode:", err.pgcode, "\n")
-
-def _open_config(config_name):
-    with open(config_name, "r", encoding="utf-8") as stream:
-      try:
-        data = yaml.safe_load(stream)
-        with open("config.json", "r", encoding="utf-8") as validation_rules:
-          schema = json.load(validation_rules)
-          v = Validator(schema)
-          if v.validate(data, schema):
-            print("Validated config.yml and no issue has been found")
-            return data
-          else:
-            raise ValueError(v.errors)
-      except ValueError as e:
-        raise e
-      except yaml.YAMLError as yamlerr:
-        if hasattr(yamlerr, "problem_mark"):
-          pm = yamlerr.problem_mark
-          message = "Your file {} has an issue on line {} at position {}"
-          format_message = message.format(pm.name, pm.line, pm.column)
-          raise ValueError(format_message) from yamlerr
-        else:
-          message = "Something went wrong while parsing config.yaml file"
-          raise ValueError(message) from yamlerr
-        
-
 def create_partitioning(collist, table, min_year, max_year, cur):
-    alter_tablename = f"ALTER TABLE {table['name']} RENAME TO {table['name']}_old;"
+    alter_tablename = rename_table.format(a=table['name'], b=f"{table['name']}_old")
+    
+    partitioning = create_table_with_partitioning.format(a=table['name'], b=", ".join(collist), c=table['partition'])
 
-    partitioning = f"""
-        CREATE TABLE {table['name']} (
-            {", ".join(collist)})
-        PARTITION BY RANGE ({table['partition']});
-    """
+    alter_check_constraint = alter_table_constraint.format(a=table['name'], b='old', c=table['partition'], d=min_year, e=max_year + 1)
 
-    alter_check_constraint = f"""
-        ALTER TABLE {table['name']}_old ADD CONSTRAINT {table['name']}_old
-        CHECK  ({table['partition']} >= '{min_year}-01-01 00:00:00' AND {table['partition']} < '{max_year + 1}-01-01 00:00:00');
-    """
-
-    alter_table_attach_partition = f"""
-        ALTER TABLE {table['name']} ATTACH PARTITION {table['name']}_old
-        FOR VALUES FROM ('{min_year}-01-01 00:00:00') TO ('{max_year + 1}-01-01 00:00:00');
-    """
+    alter_table_attach_partition = attach_table_partition.format(a=table['name'], b=min_year, c=max_year + 1)
 
     new_year = max_year + 1
 
-    create_new_year_partition = f"""
-        CREATE TABLE {table['name']}_{new_year} PARTITION OF {table['name']}
-        FOR VALUES FROM ('{new_year}-01-01 00:00:00') TO ('{new_year + 1}-01-01 00:00:00');
-    """
+    create_new_year_partition = create_partition_of_table.format(a=table['name'], b=new_year, c=new_year + 1)
 
-    add_constraint_new_year_partition = f"""
-        ALTER TABLE {table['name']}_{new_year} ADD CONSTRAINT {table['name']}_{new_year}
-        CHECK  ({table['partition']} >= '{new_year}-01-01 00:00:00' AND {table['partition']} < '{new_year + 1}-01-01 00:00:00');
-    """
+    change_new_year_owner = alter_table_owner.format(a=f"{table['name']}_{new_year}")
 
-    create_default_partition = f"""
-        CREATE TABLE {table['name']}_default PARTITION OF {table['name']} DEFAULT;
-    """
+    add_constraint_new_year_partition = alter_table_constraint.format(a=table['name'], b=new_year, c=table['partition'], d=new_year, e=new_year + 1)
+
+    create_default_partition = create_default_table_for_partition.format(a=table['name'])
+
+    change_default_owner = alter_table_owner.format(a=f"{table['name']}_default")
     
     print(f"Creating partition for {table['name']}")
     print("Altering table name")
@@ -92,55 +62,44 @@ def create_partitioning(collist, table, min_year, max_year, cur):
     cur.execute(alter_table_attach_partition)
     print("Create a new partition")
     cur.execute(create_new_year_partition)
+    print("Change new partition ownership")
+    cur.execute(change_new_year_owner)
     print("Add constraint to new partition")
     cur.execute(add_constraint_new_year_partition)
     print("Create default partition to store unpartition stuff")
     cur.execute(create_default_partition)
+    print("Change default partition ownership")
+    cur.execute(change_default_owner)
 
 def split_partition(table, year, min_year, cur, colname):
-    detach_partition = f"ALTER TABLE {table['name']} DETACH PARTITION {table['name']}_old;"
-    table_name = f"{table['name']}_{year}"
-    create_table = f"""
-        CREATE TABLE {table_name} PARTITION OF {table['name']}
-            FOR VALUES FROM ('{year}-01-01 00:00:00') TO ('{year + 1}-01-01 00:00:00');
-    """
+    
+    detach_old_partition = detach_partition.format(a=table['name'], b='old')
+    
+    create_table = create_partition_of_table.format(a=table['name'], b=year, c=year + 1)
 
-    add_constraint_table = f"""
-        ALTER TABLE {table_name} ADD CONSTRAINT {table_name}
-        CHECK  ({table['partition']} >= '{year}-01-01 00:00:00' AND {table['partition']} < '{year + 1}-01-01 00:00:00');
-    """
+    change_table_owner = alter_table_owner.format(a=f"{table['name']}_{year}")
 
-    create_idx = f"CREATE INDEX idx_{table_name} ON {table_name}({table['partition']});"
+    add_constraint_table = alter_table_constraint.format(a=table['name'], b=year, c=table['partition'], d=year, e=year + 1)
 
-    move_lines = f"""
-        WITH moved_rows AS (
-            DELETE FROM {table['name']}_old a
-            WHERE {table['partition']} >= '{year}-01-01 00:00:00' AND {table['partition']} < '{year + 1}-01-01 00:00:00'
-            RETURNING a.* 
-        )
-        INSERT INTO {table_name}
-        SELECT {",".join(colname)} FROM moved_rows;
-    """
+    create_idx = create_index.format(a=table['name'], b=year, c=table['partition'])
 
-    analyze = f"ANALYZE {table_name};"
+    move_lines = move_rows_to_another_table.format(a=table['name'], b='old', c=table['partition'], d=year, e=year + 1, f=",".join(colname))
 
-    drop_existing_constraint = f"ALTER TABLE {table['name']}_old DROP CONSTRAINT {table['name']}_old;"
+    analyze = run_analyze.format(a=table['name'], b=year)
 
-    change_constraint = f"""
-        ALTER TABLE {table['name']}_old ADD constraint {table['name']}_old
-        CHECK  ({table['partition']} >= '{min_year}-01-01 00:00:00' AND {table['partition']} < '{year}-01-01 00:00:00');
-    """
+    drop_existing_constraint = drop_table_constraint.format(a=f"{table['name']}_old", b=f"{table['name']}_old")
 
-    reattach_table = f"""
-        ALTER TABLE {table['name']} ATTACH PARTITION {table['name']}_old
-        FOR VALUES FROM ('{min_year}-01-01 00:00:00') TO ('{year}-01-01 00:00:00');
-    """
+    change_constraint = alter_table_constraint.format(a=table['name'], b='old', c=table['partition'], d=min_year, e=year)
 
+    reattach_table = attach_table_partition.format(a=table['name'], b=min_year, c=year)
+    
     print(f"Splitting partition by year: {year}")
     print("Detach old partition table")
-    cur.execute(detach_partition)
+    cur.execute(detach_old_partition)
     print("Create new table for partition")
     cur.execute(create_table)
+    print("Change table partition ownership")
+    cur.execute(change_table_owner)
     print("Add table constraint for table")
     cur.execute(add_constraint_table)
     print("Create new table index")
@@ -157,42 +116,30 @@ def split_partition(table, year, min_year, cur, colname):
     cur.execute(reattach_table)
 
 def split_default_partition(table, year, cur, colname):
-    detach_partition = f"ALTER TABLE {table['name']} DETACH PARTITION {table['name']}_default;"
-    table_name = f"{table['name']}_{year}"
 
-    create_table = f"""
-        CREATE TABLE {table_name} PARTITION OF {table['name']}
-            FOR VALUES FROM ('{year}-01-01 00:00:00') TO ('{year + 1}-01-01 00:00:00');
-    """
+    detach_default_partition = detach_partition.format(a=table['name'], b='default')
 
-    add_constraint_table = f"""
-        ALTER TABLE {table_name} ADD CONSTRAINT {table_name}
-        CHECK ({table['partition']} >= '{year}-01-01 00:00:00' AND {table['partition']} < '{year + 1}-01-01 00:00:00');
-    """
+    create_table = create_partition_of_table.format(a=table['name'], b=year, c=year + 1)
 
-    create_idx = f"CREATE INDEX idx_{table_name} ON {table_name}({table['partition']});"
+    change_table_owner = alter_table_owner.format(a=f"{table['name']}_{year}")
 
-    move_lines = f"""
-        WITH moved_rows AS (
-            DELETE FROM {table['name']}_default a
-            WHERE {table['partition']} >= '{year}-01-01 00:00:00' AND {table['partition']} < '{year + 1}-01-01 00:00:00'
-            RETURNING a.* 
-        )
-        INSERT INTO {table_name}
-        SELECT {",".join(colname)} FROM moved_rows;
-    """
+    add_constraint_table = alter_table_constraint.format(a=table['name'], b=year, c=table['partition'], d=year, e=year + 1)
+    
+    create_idx = create_index.format(a=table['name'], b=year, c=table['partition'])
 
-    analyze = f"ANALYZE {table_name};"
+    move_lines = move_rows_to_another_table.format(a=table['name'], b='default', c=table['partition'], d=year, e=year + 1, f=",".join(colname))
 
-    reattach_table = f"""
-        ALTER TABLE {table['name']} ATTACH PARTITION {table['name']}_default DEFAULT
-    """
+    analyze = run_analyze.format(a=table['name'], b=year)
+
+    reattach_table = attach_default_partition.format(a=table['name'])
 
     print(f"Splitting partition by year: {year}")
     print("Detach default partition table")
-    cur.execute(detach_partition)
+    cur.execute(detach_default_partition)
     print("Create new table for partition")
     cur.execute(create_table)
+    print("Change table partition ownership")
+    cur.execute(change_table_owner)
     print("Add table constraint for table")
     cur.execute(add_constraint_table)
     print("Create new table index")
@@ -206,22 +153,8 @@ def split_default_partition(table, year, cur, colname):
 
 
 def checker_table(table, cur):
-    checker = f"""
-                SELECT n.nspname as "Schema",
-                    c.relname as "Name",
-                    CASE c.relkind WHEN 'r' THEN 'table' WHEN 'v' THEN 'view' WHEN 'm' THEN 'materialized view' WHEN 'i' THEN 'index' WHEN 'S' THEN 'sequence' WHEN 's' THEN 'special' WHEN 'f' THEN 'foreign table' WHEN 'p' THEN 'partitioned table' WHEN 'I' THEN 'partitioned index' END as "Type",
-                    pg_catalog.pg_size_pretty(pg_catalog.pg_table_size(c.oid)) as "Size"
-                    FROM pg_catalog.pg_class c
-                        LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-                    WHERE c.relkind IN ('r','p','v','m','S','f','')
-                        AND n.nspname <> 'pg_catalog'
-                        AND n.nspname <> 'information_schema'
-                        AND n.nspname !~ '^pg_toast'
-                        AND c.relname = '{table['name']}'
-                        AND n.nspname = '{table['schema']}'
-                    AND pg_catalog.pg_table_is_visible(c.oid)
-                    ORDER BY 1,2;
-            """
+
+    checker = table_check.format(a=table['name'], b=table['schema'])
     
     print("Checking table if it is partition")
     cur.execute(checker)
@@ -247,7 +180,7 @@ def additional_partitioning(table_data, cur, table, years, colname):
         print("Partition already exist")
 
 def check_addon_partition_needed(cur, table):
-    check_default_table = f"SELECT count(*) FROM {table['name']}_default;"
+    check_default_table = default_table_check.format(a=table['name'])
 
     cur.execute(check_default_table)
 
@@ -273,8 +206,6 @@ def additional_index_reverse_partitioning(index, table):
             cur_yaml = yaml.safe_load(yamlfile) # Note the safe_load
 
             for table in cur_yaml['table']:
-                print(table['name'] in get_tb_schema[1])
-                print(table['schema'] in get_tb_schema[0])
                 if table['name'] in get_tb_schema[1] and table['schema'] in get_tb_schema[0]:
                     print("Adding additional index for reverse partitioning")
                     table['additional_index_name'] = {}
@@ -284,7 +215,8 @@ def additional_index_reverse_partitioning(index, table):
             yaml.safe_dump(cur_yaml, yamlfile)
 
 def addon_partition(cur, table, colname):
-    cur.execute(f"SELECT min({table['partition']}), max({table['partition']}) FROM {table['name']};")
+    min_max = get_min_max_table.format(a=table['partition'], b=table['name'])
+    cur.execute(min_max)
 
     dates = cur.fetchall()
 
@@ -314,6 +246,29 @@ def addon_partition(cur, table, colname):
 
         additional_partitioning(min_table, cur, table, min_check_year, colname)
 
+def change_table_index(table, cur):
+    unique_index = create_unique_index.format(a="temp_idx", b=table['name'], c=table['pkey'], d=table['partition'])
+    cur.execute(unique_index)
+
+    drop_existing_constraint = drop_table_constraint.format(a=table["name"], b=f"{table['name']}_pkey")
+    cur.execute(drop_existing_constraint)
+
+    drop_index = drop_table_index.format(a=f"{table['name']}_pkey")
+    cur.execute(drop_index)
+
+    alter_index = alter_table_index.format(a="temp_idx", b=f"{table['name']}_pkey")
+    cur.execute(alter_index)
+
+def change_owner_on_index_table(table, cur):
+    change_owner = alter_table_owner.format(a=table['name'])
+    change_owner_sequence = alter_sequence_owner.format(a=table['name'])
+    change_sequence_ownership = alter_sequence_owned_by.format(a=table['name'], b=f"{table['name']}.{table['pkey']}")
+
+    print("Change sequence ownership")
+    cur.execute(change_owner)
+    cur.execute(change_owner_sequence)
+    cur.execute(change_sequence_ownership)
+
 def main():
     server = {
         'local_bind_host': os.environ['DB_HOST'],
@@ -327,28 +282,30 @@ def main():
     config = _open_config("config.yaml")
 
     for table in config['table']:
+        set_replica = set_search_path.format(a=table['schema'])
+        print(set_replica)
+        cur.execute(set_replica)
 
-        cur.execute(f"SET search_path TO '{table['schema']}';")
-
-        cur.execute(f"select indexdef from pg_indexes where tablename = '{table['name']}' and schemaname = '{table['schema']}'")
+        get_index_def = get_table_index.format(a="indexdef", b=table['name'], c=table['schema'])
+        cur.execute(get_index_def)
 
         index_data = cur.fetchall()
 
         index_status = [index[0] for index in index_data if table['partition'] in index[0]]
 
         if len(index_status) == 0:
-            cur.execute(f"CREATE UNIQUE INDEX temp_idx ON {table['name']} ({table['pkey']}, {table['partition']});")
-            cur.execute(f'ALTER TABLE {table["name"]} DROP CONSTRAINT IF EXISTS {table["name"]}_pkey;')
-            cur.execute(f'DROP INDEX IF EXISTS {table["name"]}_pkey;')
-            cur.execute(f"ALTER INDEX temp_idx RENAME TO {table['name']}_pkey;")
+            change_table_index(table, cur)
 
-        cur.execute(f"ALTER TABLE {table['name']} REPLICA IDENTITY FULL;")
+            cur.execute(get_index_def)
 
-        cur.execute(f"select indexdef from pg_indexes where tablename = '{table['name']}' and schemaname = '{table['schema']}'")
+            index_data = cur.fetchall()
 
-        index_data = cur.fetchall()
+        change_replica_identity = alter_replica_identity.format(a=table['name'])
+        cur.execute(change_replica_identity)
             
-        cur.execute(f"SELECT min({table['partition']}), max({table['partition']}) FROM {table['name']};")
+        min_max = get_min_max_table.format(a=table['partition'], b=table['name'])
+
+        cur.execute(min_max)
 
         data = cur.fetchall()
 
@@ -377,11 +334,13 @@ def main():
                     new_year = min_year + year 
                     split_partition(table, new_year, min_year, cur, colname)
 
-                change_old_to_year = f"ALTER TABLE {table['name']}_old RENAME TO {table['name']}_{min_year};"
+                change_old_to_year = rename_table.format(a=f"{table['name']}_old", b=f"{table['name']}_{min_year}")
 
                 cur.execute(change_old_to_year)
 
-                get_index_on_old_table = f"select indexname from pg_indexes where tablename = '{table['name']}_2017' and schemaname = '{table['schema']}';"
+                change_owner_on_index_table(table, cur)
+
+                get_index_on_old_table = get_table_index.format(a="indexname", b=f"{table['name']}_{min_year}", c=table['schema'])
 
                 cur.execute(get_index_on_old_table)
 
@@ -389,13 +348,14 @@ def main():
                 
                 for indexes in index_of_old_data:
                     print("Dropping index from the old partition data")
-                    cur.execute(f"DROP INDEX {indexes[0]};")
+                    drop_idx = drop_table_index.format(a=indexes[0])
+                    cur.execute(drop_idx)
                 
                 for index in index_data:
                     print("Adding index to the new partition table")
                     cur.execute(f"{index[0]};")
                     
-                additional_index_reverse_partitioning(index, table)
+                    additional_index_reverse_partitioning(index, table)
             
             else:
                 print("No partitioning needed, as table already partition")
@@ -407,7 +367,7 @@ def main():
                     ## Create partition for the table and move the data there (yearly basis)
                     addon_partition(cur, table, colname)
 
-    conn.commit()
+        conn.commit()
 
     conn.close()
 

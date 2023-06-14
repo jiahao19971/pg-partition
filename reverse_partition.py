@@ -1,103 +1,31 @@
 from dotenv import load_dotenv
-import sys, json, yaml, os
+import os
 from db.db import DBLoader
-from cerberus import Validator
+from common.common import _open_config
+from common.query import table_check, table_check_like
 
 load_dotenv()
-
-def print_psycopg2_exception(err):
-    err_type, err_obj, traceback = sys.exc_info()
-
-    # get the line number when exception occured
-    line_num = traceback.tb_lineno
-
-    print ("\npsycopg2 ERROR:", err, "on line number:", line_num)
-    print ("psycopg2 traceback:", traceback, "-- type:", err_type)
-
-    # psycopg2 extensions.Diagnostics object attribute
-    print ("\nextensions.Diagnostics:", err.diag)
-
-    # print the pgcode and pgerror exceptions
-    print ("pgerror:", err.pgerror)
-    print ("pgcode:", err.pgcode, "\n")
-
-def _open_config(config_name):
-    with open(config_name, "r", encoding="utf-8") as stream:
-      try:
-        data = yaml.safe_load(stream)
-        with open("config.json", "r", encoding="utf-8") as validation_rules:
-          schema = json.load(validation_rules)
-          v = Validator(schema)
-          if v.validate(data, schema):
-            print("Validated config.yml and no issue has been found")
-            return data
-          else:
-            raise ValueError(v.errors)
-      except ValueError as e:
-        raise e
-      except yaml.YAMLError as yamlerr:
-        if hasattr(yamlerr, "problem_mark"):
-          pm = yamlerr.problem_mark
-          message = "Your file {} has an issue on line {} at position {}"
-          format_message = message.format(pm.name, pm.line, pm.column)
-          raise ValueError(format_message) from yamlerr
-        else:
-          message = "Something went wrong while parsing config.yaml file"
-          raise ValueError(message) from yamlerr
         
 def check_table_partition(table, cur):
-    checker = f"""
-            SELECT n.nspname as "Schema",
-                c.relname as "Name",
-                CASE c.relkind WHEN 'r' THEN 'table' WHEN 'v' THEN 'view' WHEN 'm' THEN 'materialized view' WHEN 'i' THEN 'index' WHEN 'S' THEN 'sequence' WHEN 's' THEN 'special' WHEN 'f' THEN 'foreign table' WHEN 'p' THEN 'partitioned table' WHEN 'I' THEN 'partitioned index' END as "Type",
-                pg_catalog.pg_size_pretty(pg_catalog.pg_table_size(c.oid)) as "Size"
-                FROM pg_catalog.pg_class c
-                    LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-                WHERE c.relkind IN ('r','p','v','m','S','f','')
-                    AND n.nspname <> 'pg_catalog'
-                    AND n.nspname <> 'information_schema'
-                    AND n.nspname !~ '^pg_toast'
-                    AND c.relname = '{table['name']}'
-                    AND n.nspname = '{table['schema']}'
-                AND pg_catalog.pg_table_is_visible(c.oid)
-                ORDER BY 1,2;
-        """
+    checker = table_check.format(a=table['name'], b=table['schema'])
     cur.execute(checker)
     data = cur.fetchall()
 
     if "partitioned table" in list(data[0]):
-        return False
-    else:
         return True
+    else:
+        return False
 
 def check_combine_table(table, cur):
-    checker = f"""
-            SELECT n.nspname as "Schema",
-                c.relname as "Name",
-                CASE c.relkind WHEN 'r' THEN 'table' WHEN 'v' THEN 'view' WHEN 'm' THEN 'materialized view' WHEN 'i' THEN 'index' WHEN 'S' THEN 'sequence' WHEN 's' THEN 'special' WHEN 'f' THEN 'foreign table' WHEN 'p' THEN 'partitioned table' WHEN 'I' THEN 'partitioned index' END as "Type",
-                pg_catalog.pg_size_pretty(pg_catalog.pg_table_size(c.oid)) as "Size"
-                FROM pg_catalog.pg_class c
-                    LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-                WHERE c.relkind IN ('r','p','v','m','S','f','')
-                    AND n.nspname <> 'pg_catalog'
-                    AND n.nspname <> 'information_schema'
-                    AND n.nspname !~ '^pg_toast'
-                    AND c.relname like '{table['name']}_%'
-                    AND n.nspname = '{table['schema']}'
-                AND pg_catalog.pg_table_is_visible(c.oid)
-                ORDER BY 1,2;
-        """
+    checker = table_check_like.format(a=f'{table["name"]}_%', b=table['schema'])
     cur.execute(checker)
     data = cur.fetchall()
 
     table_to_be_combine = []
     for table in data:
-        if "table" in list(table):
-            table_to_be_combine.append(list(table)[1])
+        table_to_be_combine.append(list(table)[1])
 
     return table_to_be_combine
-
-    
 
 def main():
     server = {
@@ -112,13 +40,13 @@ def main():
     config = _open_config("config.yaml")
 
     for table in config['table']:
-
+        print(f"Set Search path to {table['schema']}")
         cur.execute(f"SET search_path TO '{table['schema']}';")
 
         partitioning = check_table_partition(table, cur)
 
-        if not partitioning:
-            print("Reverting index back to 1 table")
+        if partitioning:
+            print(f"Reverting table from partition to normal table: {table['schema']}.{table['name']}")
             collist = []
             colname = []
             for columnname in list(table['column'].keys()):
@@ -136,37 +64,66 @@ def main():
             """
 
             cur.execute(create_table)
+
             for tab in table_combine:
-                insert = f"INSERT INTO {table['name']}_new SELECT {','.join(colname)} FROM {tab};"
-                cur.execute(insert)
+                print(f"moving data from {tab} to {table['name']}_new")
+                insertation = f"INSERT INTO {table['name']}_new SELECT {','.join(colname)} FROM {tab};"
+                cur.execute(insertation)
 
-            
-            drop_partitioning = f"""
-                DROP TABLE {table['name']} CASCADE;
-            """
+            if len(table_combine) > 0:
+                get_sequence = f"SELECT sequencename, start_value, increment_by FROM pg_sequences WHERE sequencename like '{table['name']}%' and schemaname = '{table['schema']}';"
 
-            alter_name = f"ALTER TABLE {table['name']}_new RENAME TO {table['name']};"
-            alter_idx = f"ALTER INDEX {table['name']}_new_pkey RENAME TO {table['name']}_pkey; "
+                cur.execute(get_sequence)
 
-            run_analyze = f"ANALYZE {table['name']};"
+                seq = cur.fetchall()
+                
+                drop_partitioning = f"""
+                    DROP TABLE {table['name']} CASCADE;
+                """
 
-            cur.execute(drop_partitioning)
-            cur.execute(alter_name)
-            cur.execute(alter_idx)
-            cur.execute(run_analyze)
+                alter_name = f"ALTER TABLE {table['name']}_new RENAME TO {table['name']};"
+                alter_idx = f"ALTER INDEX {table['name']}_new_pkey RENAME TO {table['name']}_pkey; "
 
-            if 'additional_index_name' in table:
-                idxColList = []
-                for idx_col in list(table['additional_index_name'].keys()):
-                    newval = f"CREATE INDEX {idx_col} ON {table['name']} {table['additional_index_name'][idx_col]};"
-                    idxColList.append(newval)
+                run_analyze = f"ANALYZE {table['name']};"
 
-                for idx in idxColList:
-                    cur.execute(idx)
+                cur.execute(drop_partitioning)
+                print("Rename table to original table name")
+                cur.execute(alter_name)
+                print("Rename index to original table")
+                cur.execute(alter_idx)
+                print("Running analyze")
+                cur.execute(run_analyze)
 
-    conn.commit()
+                if 'additional_index_name' in table:
+                    idxColList = []
+                    for idx_col in list(table['additional_index_name'].keys()):
+                        newval = f"CREATE INDEX {idx_col} ON {table['name']} {table['additional_index_name'][idx_col]};"
+                        idxColList.append(newval)
+
+                    for idx in idxColList:
+                        cur.execute(idx)
+
+                for sequence in seq:
+                    create_sequence = f'CREATE SEQUENCE IF NOT EXISTS "{table["schema"]}".{sequence[0]} START WITH {sequence[1]} INCREMENT BY {sequence[2]};'
+
+                    change_owner = f"""
+                        ALTER TABLE IF EXISTS "{table["schema"]}".{table['name']} OWNER TO postgres;
+                        ALTER SEQUENCE IF EXISTS "{table["schema"]}".{sequence[0]} OWNER TO postgres;
+                    """
+                    
+                    change_sequence_ownership = f'ALTER SEQUENCE IF EXISTS "{table["schema"]}".{sequence[0]} OWNED BY {table["name"]}.{table["pkey"]}'
+
+                    print("Create sequence for table")
+                    cur.execute(create_sequence)
+                    print("Change table and sequence owner to postgres")
+                    cur.execute(change_owner)
+                    print("Change sequence ownership back to original table")
+                    cur.execute(change_sequence_ownership)
+
+        else:
+            print(f"No reversing partition needed for table: {table['schema']}.{table['name']}")
+        conn.commit()
     conn.close()
-
 
 if __name__ == "__main__":
     main()
