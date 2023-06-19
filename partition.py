@@ -1,5 +1,5 @@
 from dotenv import load_dotenv
-import yaml, re, os
+import yaml, re, os, time
 from db.db import DBLoader
 from common.common import _open_config
 from common.query import (
@@ -270,11 +270,12 @@ def change_owner_on_index_table(table, cur):
     cur.execute(change_sequence_ownership)
 
 def main():
+    tic = time.perf_counter()
     server = {
         'local_bind_host': os.environ['DB_HOST'],
         'local_bind_port': 5432,
     }
-    conn = DBLoader(server, 'kfit_app_staging')
+    conn = DBLoader(server, os.environ['DATABASE'])
     conn = conn.connect()
 
     cur = conn.cursor()
@@ -370,6 +371,8 @@ def main():
         conn.commit()
 
     conn.close()
+    toc = time.perf_counter()
+    print(f"Script completed in {toc - tic:0.4f} seconds")
 
 
 if __name__ == "__main__":

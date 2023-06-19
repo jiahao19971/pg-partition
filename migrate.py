@@ -9,12 +9,14 @@ import os
 
 load_dotenv()
 
+db_name = os.environ['DATABASE']
+
 def main():
     server = {
         'local_bind_host': os.environ['DB_HOST'],
         'local_bind_port': 5432,
     }
-    conn = DBLoader(server, 'kfit_app_staging')
+    conn = DBLoader(server, os.environ['DATABASE'])
     conn = conn.connect()
 
     cur = conn.cursor()
@@ -53,7 +55,8 @@ def main():
                 file_name = f"{table['schema']}_{table['name']}_{new_year}_{now.strftime('%Y%m%d%H%M%S')}"
                 regions = "ap-southeast-1"
                 bucket = os.environ['BUCKET_NAME']
-                path = f"kfit_app_staging/{table['schema']}/{table['name']}/{new_year}" 
+                
+                path = f"{db_name}/{table['schema']}/{table['name']}/{new_year}" 
                 file = f"{path}/{file_name}.csv"
 
                 migrate_data = f"""

@@ -32,7 +32,7 @@ def main():
         'local_bind_host': os.environ['DB_HOST'],
         'local_bind_port': 5432,
     }
-    conn = DBLoader(server, 'kfit_app_staging')
+    conn = DBLoader(server, os.environ['DATABASE'])
     conn = conn.connect()
 
     cur = conn.cursor()
