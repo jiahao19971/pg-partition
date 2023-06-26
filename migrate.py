@@ -1,49 +1,48 @@
 from dotenv import load_dotenv
-import datetime, os, subprocess
+import datetime, os, subprocess, time
 from db.db import DBLoader
-from common.common import _open_config, logs
+from common.common import _open_config, logs, background
 import boto3
 from tunnel.tunnel import Tunneler
 from botocore.exceptions import ClientError
 from common.query import (
-    get_order_by_limit_1
+    get_order_by_limit_1,
+    table_check
 )
 import os
     
-
 load_dotenv()
 
 db_name = os.environ['DATABASE']
 logger = logs("PG_Migrate")
 
-def main():
-    DB_HOST=os.environ['DB_HOST']
-    try:
-        server = Tunneler(DB_HOST, 5432)
+def check_table_partition(table, cur):
+    checker = table_check.format(a=table['name'], b=table['schema'])
+    cur.execute(checker)
+    data = cur.fetchall()
 
-        server = server.connect()
+    if "partitioned table" in list(data[0]):
+        return True
+    else:
+        return False
 
-        server.start()
-    except:
-        server = {
-            'local_bind_host': DB_HOST,
-            'local_bind_port': 5432,
-        }    
+@background
+def migrate_run(server, table):
+    application_name = f"{table['schema']}.{table['name']}"
 
-    config = _open_config("config.yaml")
+    conn = DBLoader(server, db_name, application_name=application_name)
 
-    for table in config['table']:
-        application_name = f"{table['schema']}.{table['name']}"
+    conn = conn.connect()
+    cur = conn.cursor()
+    logger = logs(application_name)
 
-        conn = DBLoader(server, db_name, application_name=application_name)
-    
-        conn = conn.connect()
-        cur = conn.cursor()
-        logger = logs(application_name)
+    qry = f"Set search_path to '{table['schema']}'"
+    logger.info(qry)
+    cur.execute(f"{qry};")
 
-        qry = f"Set search_path to '{table['schema']}'"
-        logger.info(qry)
-        cur.execute(f"{qry};")
+    partitioning = check_table_partition(table, cur)
+
+    if partitioning:
 
         cur.execute("CREATE EXTENSION IF NOT EXISTS aws_s3 CASCADE;")
 
@@ -177,9 +176,34 @@ def main():
                 conn.commit()
         else:
             logger.info(f"No migration needed for: {table['schema']}.{table['name']}")
-            
+    else:
+        logger.info(f"No migration needed for: {table['schema']}.{table['name']}")
+        
     conn.commit()
     conn.close()
+
+def main():
+    DB_HOST=os.environ['DB_HOST']
+    try:
+        server = Tunneler(DB_HOST, 5432)
+
+        server = server.connect()
+
+        server.start()
+    except:
+        server = {
+            'local_bind_host': DB_HOST,
+            'local_bind_port': 5432,
+        }    
+
+    config = _open_config("config.yaml")
+
+    for table in config['table']:
+        tic = time.perf_counter()
+        migrate_run(server, table)
+        toc = time.perf_counter()
+        logger.debug(f"Script completed in {toc - tic:0.4f} seconds")
+    
 
 if __name__ == "__main__":
     main()

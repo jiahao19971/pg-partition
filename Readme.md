@@ -137,12 +137,12 @@ production python <*.py>
 ```
 
 5. There are 3 main scripts to run
-    a. partition.py - Used to perform partitioning
-    b. migrate.py - Used to perform migration of partition data from db to s3 bucket and remove the partition
-    c. reverse_partition.py - Used to reverse the partitioning
+  - partition.py - Used to perform partitioning
+  - migrate.py - Used to perform migration of partition data from db to s3 bucket and remove the partition
+  - reverse_partition.py - Used to reverse the partitioning
 
 6. Other script to be used:
-    a. check_blocker.py - Used to verified that during partitioning, no table are block
+  - check_blocker.py - Used to verified that during partitioning, no table are block
 
 ## To do
 - Create a job schedular to check regularly on the max date and if the partition exist, if not then create a partition 

@@ -2,7 +2,7 @@ from dotenv import load_dotenv
 import re, os, time
 from db.db import DBLoader
 from tunnel.tunnel import Tunneler
-from common.common import _open_config, logger, logs
+from common.common import _open_config, logger, logs, background
 from common.query import (
     create_table_with_partitioning, 
     alter_table_constraint, 
@@ -29,17 +29,11 @@ from common.query import (
     set_search_path,
     get_order_by_limit_1
 )
-import asyncio
 from ruamel.yaml import YAML
 
 yaml = YAML()
 yaml.preserve_quotes = True
 
-def background(f):
-    def wrapped(*args, **kwargs):
-        return asyncio.get_event_loop().run_in_executor(None, f, *args, **kwargs)
-
-    return wrapped
 
 load_dotenv()
 
