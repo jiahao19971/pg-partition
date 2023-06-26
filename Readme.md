@@ -86,8 +86,6 @@ table:
  - column: 
 + The format of the column information
     <column name>: <column field for example see below>
-+ Example of the format: 
-    id: int NOT NULL DEFAULT nextval('public.test'::regclass)
 + How long do you want the data to be in your live db (n + 1) in years?
   interval: 3
 + What is the table name ?
@@ -102,9 +100,26 @@ table:
   additional_index_name: 
 + The format of the index information
     <index name>: <index field for example see below>
-+ Example of the format: 
+```
+
+Finalize example: `config.yaml`
+```
+table:
+- column:
+    id: int NOT NULL DEFAULT nextval('public.payments_id_seq'::regclass)
+    created_at: timestamp NOT NULL
+    updated: timestamp NOT NULL DEFAULT now()
+    amount: float
+    status: varchar
+  interval: 3
+  name: payments
+  partition: created_at
+  pkey: id
+  schema: public
+  additional_index_name: 
     index_test_type_id: USING  btree (item_type, item_id)
 ```
+
 
 1. To run the script, run these export first:
 ```
