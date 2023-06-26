@@ -1,5 +1,6 @@
 # PG Partition
 
+## Current Partitioning only works on existing table and convert it to a Range Partition. 
 ## To use this Repository, make sure to install all the dependencies from requirements.txt
 ```
 pip install - r requirements.txt
