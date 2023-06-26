@@ -1,5 +1,7 @@
-**.env
+**.env**
+**.pem
 config.yaml
 **__pycache__
 **.vscode
 **.sql
+**query_s3.py

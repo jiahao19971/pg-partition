@@ -1,11 +1,20 @@
 from dotenv import load_dotenv
-import os
-import logging
-import psycopg2
-
+import psycopg2, logging, os
+from common.common import logs as loggers
 
 load_dotenv()
-logging.basicConfig(format="%(asctime)s - %(levelname)s: %(message)s")
+
+class ContextFilter(logging.Filter):
+    """
+    This is a filter which injects contextual information into the log.
+    """
+    def __init__(self, appname):
+        self.appname = appname
+        super
+
+    def filter(self, record):
+        record.APPNAME = self.appname
+        return True
 
 class DBLoader():
 
@@ -14,13 +23,17 @@ class DBLoader():
         "switching back to default value: %s"
     )
       
-    def __init__(self, server, database):
-        self.logger = logging.getLogger("PGUpgrader")
-        self.logger.info(f"Database {database} Initialize: {server['local_bind_host']}")
+    def __init__(self, server, database, application_name="DB_Loader"):
+        self.logger = loggers(f"DB_{database}")
+        try:
+            self.logger.info(f"Database {database} Initialize: {server.local_bind_host}")
+        except:
+            self.logger.info(f"Database {database} Initialize: {server['local_bind_host']}")
         self.db_user=self._get_database_username()
         self.db_pass=self._get_database_password()
         self.database = database 
         self.server = server
+        self.application_name = application_name
 
     def _get_database_username(self):
         try:
@@ -53,14 +66,24 @@ class DBLoader():
                         sslcert=os.environ['DB_SSLCERT'],
                         sslkey=os.environ['DB_SSLKEY']
                     )
-        except:
-            conn = psycopg2.connect(
-                database=self.database,
-                user=self.db_user,
-                host=self.server['local_bind_host'],
-                port=self.server['local_bind_port'],
-                password=self.db_pass
-            )
-        
+        except Exception as e:
+            try:
+                conn = psycopg2.connect(
+                    database=self.database,
+                    user=self.db_user,
+                    host=self.server.local_bind_host,
+                    port=self.server.local_bind_port,
+                    password=self.db_pass,
+                    application_name=self.application_name
+                )
+            except Exception as e:
+                conn = psycopg2.connect(
+                    database=self.database,
+                    user=self.db_user,
+                    host=self.server['local_bind_host'],
+                    port=self.server['local_bind_port'],
+                    password=self.db_pass,
+                    application_name=self.application_name
+                )
 
         return conn

@@ -1,10 +1,12 @@
 from dotenv import load_dotenv
 import os
 from db.db import DBLoader
-from common.common import _open_config
+from tunnel.tunnel import Tunneler
+from common.common import _open_config, logs
 from common.query import table_check, table_check_like
 
 load_dotenv()
+logger = logs("PG_Reverse_Partition")
         
 def check_table_partition(table, cur):
     checker = table_check.format(a=table['name'], b=table['schema'])
@@ -28,25 +30,38 @@ def check_combine_table(table, cur):
     return table_to_be_combine
 
 def main():
-    server = {
-        'local_bind_host': os.environ['DB_HOST'],
-        'local_bind_port': 5432,
-    }
-    conn = DBLoader(server, os.environ['DATABASE'])
-    conn = conn.connect()
+    DB_HOST=os.environ['DB_HOST']
+    try:
+        server = Tunneler(DB_HOST, 5432)
 
-    cur = conn.cursor()
+        server = server.connect()
+
+        server.start()
+    except:
+        server = {
+            'local_bind_host': DB_HOST,
+            'local_bind_port': 5432,
+        }    
 
     config = _open_config("config.yaml")
 
     for table in config['table']:
-        print(f"Set Search path to {table['schema']}")
-        cur.execute(f"SET search_path TO '{table['schema']}';")
+        application_name = f"{table['schema']}.{table['name']}"
+
+        conn = DBLoader(server, os.environ['DATABASE'], application_name=application_name)
+        conn = conn.connect()
+
+        logger = logs(application_name)
+
+        cur = conn.cursor()
+        qry = f"SET search_path TO '{table['schema']}'"
+        logger.info(qry)
+        cur.execute(f"{qry};")
 
         partitioning = check_table_partition(table, cur)
 
         if partitioning:
-            print(f"Reverting table from partition to normal table: {table['schema']}.{table['name']}")
+            logger.info(f"Reverting table from partition to normal table: {table['schema']}.{table['name']}")
             collist = []
             colname = []
             for columnname in list(table['column'].keys()):
@@ -66,7 +81,7 @@ def main():
             cur.execute(create_table)
 
             for tab in table_combine:
-                print(f"moving data from {tab} to {table['name']}_new")
+                logger.info(f"moving data from {tab} to {table['name']}_new")
                 insertation = f"INSERT INTO {table['name']}_new SELECT {','.join(colname)} FROM {tab};"
                 cur.execute(insertation)
 
@@ -84,15 +99,15 @@ def main():
                 alter_name = f"ALTER TABLE {table['name']}_new RENAME TO {table['name']};"
                 alter_idx = f"ALTER INDEX {table['name']}_new_pkey RENAME TO {table['name']}_pkey; "
 
-                run_analyze = f"ANALYZE {table['name']};"
+                # run_analyze = f"ANALYZE {table['name']};"
 
                 cur.execute(drop_partitioning)
-                print("Rename table to original table name")
+                logger.debug("Rename table to original table name")
                 cur.execute(alter_name)
-                print("Rename index to original table")
+                logger.debug("Rename index to original table")
                 cur.execute(alter_idx)
-                print("Running analyze")
-                cur.execute(run_analyze)
+                # logger.debug("Running analyze")
+                # cur.execute(run_analyze)
 
                 if 'additional_index_name' in table:
                     idxColList = []
@@ -113,15 +128,15 @@ def main():
                     
                     change_sequence_ownership = f'ALTER SEQUENCE IF EXISTS "{table["schema"]}".{sequence[0]} OWNED BY {table["name"]}.{table["pkey"]}'
 
-                    print("Create sequence for table")
+                    logger.debug("Create sequence for table")
                     cur.execute(create_sequence)
-                    print("Change table and sequence owner to postgres")
+                    logger.debug("Change table and sequence owner to postgres")
                     cur.execute(change_owner)
-                    print("Change sequence ownership back to original table")
+                    logger.debug("Change sequence ownership back to original table")
                     cur.execute(change_sequence_ownership)
 
         else:
-            print(f"No reversing partition needed for table: {table['schema']}.{table['name']}")
+            logger.info(f"No reversing partition needed for table: {table['schema']}.{table['name']}")
         conn.commit()
     conn.close()
 

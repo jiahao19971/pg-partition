@@ -91,6 +91,8 @@ get_table_index = "select {a} from pg_indexes where tablename = '{b}' and schema
 
 get_min_max_table = "SELECT min({a}), max({a}) FROM {b};"
 
+get_order_by_limit_1 = "SELECT {a} FROM {b} ORDER BY {c} {d} LIMIT 1;"
+
 ## DROP
 
 drop_table_index = "DROP INDEX IF EXISTS {a};"
