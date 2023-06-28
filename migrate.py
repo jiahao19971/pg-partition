@@ -24,9 +24,9 @@ def check_table_partition(table, cur):
     if "partitioned table" in list(data[0]):
         return True
     else:
-        return False
+        return False 
 
-@background
+# @background
 def migrate_run(server, table):
     application_name = f"{table['schema']}.{table['name']}"
 
@@ -76,7 +76,7 @@ def migrate_run(server, table):
                 bucket = os.environ['BUCKET_NAME']
                 
                 path = f"{db_name}/{table['schema']}/{table['name']}/{new_year}" 
-                file = f"{path}/{file_name}.csv"
+                file = f"{path}/{file_name}"
 
                 migrate_data = f"""
                     SELECT *
@@ -92,7 +92,7 @@ def migrate_run(server, table):
                 """
 
                 cur.execute(migrate_data)
-                logger.info("data migrated to s3 for year: ", new_year)
+                logger.info(f"Data migrated to s3 for year: {new_year}")
 
                 session = boto3.Session(
                             aws_access_key_id=os.environ['AWS_ACCESS_KEY'],
@@ -101,33 +101,80 @@ def migrate_run(server, table):
 
                 s3_client = session.client('s3')
 
-                data = s3_client.select_object_content(
-                    Bucket=bucket,
-                    Key=file,
-                    Expression='select count(*) from s3object',
-                    ExpressionType='SQL',
-                    InputSerialization={
-                        'CSV': {
-                            'FileHeaderInfo': 'IGNORE',
-                            'AllowQuotedRecordDelimiter': True
-                        },
-                        'CompressionType': 'NONE',
-                    },
-                    OutputSerialization={
-                        'CSV': {}
-                    },
+                data = s3_client.list_objects(
+                    Bucket=os.environ['BUCKET_NAME'],
+                    Prefix=path
                 )
+
+                get_key = [x['Key'] for x in data['Contents'] if ".sql" not in x['Key']]
+
+                counts = []
+                for key in get_key:
+                    try:
+                        data = s3_client.select_object_content(
+                            Bucket=os.environ['BUCKET_NAME'],
+                            Key=key,
+                            Expression="select count(*) from s3object",
+                            ExpressionType='SQL',
+                            InputSerialization={
+                                'CSV': {
+                                    'FileHeaderInfo': 'IGNORE',
+                                    'AllowQuotedRecordDelimiter': True
+                                },
+                                'CompressionType': 'NONE',
+                            },
+                            OutputSerialization={
+                                'CSV': {}
+                            },
+                        )
+                    except:
+                        data = s3_client.select_object_content(
+                            Bucket=os.environ['BUCKET_NAME'],
+                            Key=key,
+                            Expression="select count(*) from s3object",
+                            ExpressionType='SQL',
+                            InputSerialization={
+                                'CSV': {
+                                    'FileHeaderInfo': 'NONE',
+                                    'AllowQuotedRecordDelimiter': True
+                                },
+                                'CompressionType': 'NONE',
+                            },
+                            OutputSerialization={
+                                'CSV': {}
+                            },
+                        )
+
+                    tic = time.perf_counter()
+                    for event in data['Payload']:
+                        if records := event.get('Records'):
+                            field = records['Payload']
+                            field = field.decode("utf-8")
+                            
+
+                            counts.append(int(field))
+
+                    toc = time.perf_counter()
+                    logger.debug(f"Get table count completed in {toc - tic:0.4f} seconds")
+
                 logger.info("S3 Get Content completed")
+                val = sum(counts)
 
                 tables = f'"{table["schema"]}".{table["name"]}_{new_year}'
 
                 table_sql = '{a}_{b}_{c}.sql'.format(a=table["schema"], b=table["name"], c=new_year)
 
-                
+                try:
+                    host = server['local_bind_host']
+                    port = server['local_bind_port']
+                except: 
+                    host = server.local_bind_host
+                    port = server.local_bind_port
+
                 if os.environ['PASSWORD'] == "":
-                    db_url = f"postgres://{os.environ['USERNAME']}@{os.environ['DB_HOST']}:5432/{os.environ['DATABASE']}?sslrootcert={os.environ['DB_SSLROOTCERT']}&sslcert={os.environ['DB_SSLCERT']}&sslkey={os.environ['DB_SSLKEY']}&sslmode={os.environ['DB_SSLMODE']}"
+                    db_url = f"postgres://{os.environ['USERNAME']}@{host}:{port}/{os.environ['DATABASE']}?sslrootcert={os.environ['DB_SSLROOTCERT']}&sslcert={os.environ['DB_SSLCERT']}&sslkey={os.environ['DB_SSLKEY']}&sslmode={os.environ['DB_SSLMODE']}"
                 else:
-                    db_url = f"postgres://{os.environ['USERNAME']}:{os.environ['PASSWORD']}@{os.environ['DB_HOST']}:5432/{os.environ['DATABASE']}"
+                    db_url = f"postgres://{os.environ['USERNAME']}:{os.environ['PASSWORD']}@{host}:{port}/{os.environ['DATABASE']}"
 
                 db = f"--dbname={db_url}"
                 try:
@@ -157,17 +204,12 @@ def migrate_run(server, table):
                         logger.error(exp)
                         exit(1)
                     finally:
-                        for event in data['Payload']:
-                            if records := event.get('Records'):
-                                field = records['Payload']
-                                field = field.decode("utf-8").replace("\n", "")
+                        if int(val) == int(count_table[0][0]):
+                            logger.info(f"Data migrated check successfully {new_year}")
 
-                                if int(field) == int(count_table[0][0]):
-                                    logger.info(f"Data migrated check successfully {new_year}")
+                            cur.execute(f'DROP TABLE "{table["schema"]}".{table["name"]}_{new_year};')
 
-                                    cur.execute(f'DROP TABLE "{table["schema"]}".{table["name"]}_{new_year};')
-
-                                    logger.info("Removing table from the partition and database")
+                            logger.info("Removing table from the partition and database")
 
                 except Exception as e:
                     logger.error(e)

@@ -3,15 +3,15 @@ import re, os, time
 from db.db import DBLoader
 from tunnel.tunnel import Tunneler
 from common.common import _open_config, logger, logs, background
+from ruamel.yaml import YAML
 from common.query import (
     create_table_with_partitioning, 
     alter_table_constraint, 
     attach_table_partition, 
     create_partition_of_table, 
     create_default_table_for_partition, 
-    create_index, 
     move_rows_to_another_table, 
-    run_analyze, detach_partition, 
+    detach_partition, 
     attach_default_partition, 
     table_check, 
     default_table_check, 
@@ -29,11 +29,9 @@ from common.query import (
     set_search_path,
     get_order_by_limit_1
 )
-from ruamel.yaml import YAML
 
 yaml = YAML()
 yaml.preserve_quotes = True
-
 
 load_dotenv()
 
@@ -92,11 +90,7 @@ class Partitioning():
 
         add_constraint_table = alter_table_constraint.format(a=table['name'], b=year, c=table['partition'], d=year, e=year + 1)
 
-        create_idx = create_index.format(a=table['name'], b=year, c=table['partition'])
-
         move_lines = move_rows_to_another_table.format(a=table['name'], b='old', c=table['partition'], d=year, e=year + 1, f=",".join(colname))
-
-        # analyze = run_analyze.format(a=table['name'], b=year)
 
         drop_existing_constraint = drop_table_constraint.format(a=f"{table['name']}_old", b=f"{table['name']}_old")
 
@@ -113,12 +107,8 @@ class Partitioning():
         cur.execute(change_table_owner)
         self.logger.debug("Add table constraint for table")
         cur.execute(add_constraint_table)
-        self.logger.debug("Create new table index")
-        cur.execute(create_idx)
         self.logger.debug("Migrate old data to new table")
         cur.execute(move_lines)
-        # self.logger.debug("Run analyze")
-        # cur.execute(analyze)
         self.logger.debug("Drop existing constraint for partition table")
         cur.execute(drop_existing_constraint)
         self.logger.debug("Add new constraint for partition table")
@@ -135,12 +125,8 @@ class Partitioning():
         change_table_owner = alter_table_owner.format(a=f"{table['name']}_{year}")
 
         add_constraint_table = alter_table_constraint.format(a=table['name'], b=year, c=table['partition'], d=year, e=year + 1)
-        
-        create_idx = create_index.format(a=table['name'], b=year, c=table['partition'])
 
         move_lines = move_rows_to_another_table.format(a=table['name'], b='default', c=table['partition'], d=year, e=year + 1, f=",".join(colname))
-
-        # analyze = run_analyze.format(a=table['name'], b=year)
 
         reattach_table = attach_default_partition.format(a=table['name'])
 
@@ -153,12 +139,8 @@ class Partitioning():
         cur.execute(change_table_owner)
         self.logger.debug("Add table constraint for table")
         cur.execute(add_constraint_table)
-        self.logger.debug("Create new table index")
-        cur.execute(create_idx)
         self.logger.debug("Migrate old data to new table")
         cur.execute(move_lines)
-        # self.logger.debug("Run analyze")
-        # cur.execute(analyze)
         self.logger.debug("reattach new partition table")
         cur.execute(reattach_table)
 
@@ -320,16 +302,7 @@ class Partitioning():
             partition_index = [idx[0] for idx in partition_index]
             
             if len(index_status) == 0 and len(partition_index) == 0:
-                # add_index = time.perf_counter()
                 index_data[0] = index_data[0][0].replace(table['pkey'], f"{table['pkey']}, {table['partition']}")
-                # change_table_index(table, cur)
-
-                # cur.execute(get_index_def)
-
-                # index_data = cur.fetchall()
-
-                # end_index = time.perf_counter()
-                # self.logger.debug(f"Adding index completed in {end_index - add_index:0.4f} seconds")
 
             for index in index_data:
                 if type(index) is tuple:
