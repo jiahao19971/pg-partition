@@ -43,7 +43,12 @@ def main():
             'local_bind_port': 5432,
         }    
 
-    config = _open_config("config.yaml")
+    if os.environ['ENV'] == "staging":
+        configfile = "config.staging.yaml"
+    else:
+        configfile = "config.yaml"
+        
+    config = _open_config(configfile)
 
     for table in config['table']:
         application_name = f"{table['schema']}.{table['name']}"

@@ -1,6 +1,7 @@
 **.env**
 **.pem
 config.yaml
+config.**.yaml
 **__pycache__
 **.vscode
 **.sql
