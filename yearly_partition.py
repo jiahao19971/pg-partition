@@ -101,7 +101,7 @@ def _get_config():
 if __name__ == "__main__":
     event = {
         "table": {},
-        "year": 2016,
+        "year": 2017,
     }
     
     config = _get_config()

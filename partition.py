@@ -2,7 +2,7 @@ from dotenv import load_dotenv
 import re, os, time
 from db.db import DBLoader
 from tunnel.tunnel import Tunneler
-from common.common import _open_config, logger, logs
+from common.common import _open_config, logger, logs, background
 from ruamel.yaml import YAML
 from common.query import (
     create_table_with_partitioning, 
@@ -12,7 +12,7 @@ from common.query import (
     move_rows_to_another_table, 
     detach_partition, 
     attach_default_partition, 
-    table_check, 
+    table_check,
     default_table_check, 
     rename_table, 
     alter_table_owner, 
@@ -255,12 +255,20 @@ def get_index_required(table, cur):
             partition_index = []
         else:
             partition_index = [idx[0] for idx in partition_index]
-        
+
+        new_index = []
         if len(index_status) == 0 and len(partition_index) == 0:
-            index_data[0] = (index_data[0][0].replace(table['pkey'], f"{table['pkey']}, {table['partition']}"), index_data[0][1])
+            for index in index_data:
+                if f"({table['pkey']})" in index[0]:
+                    new_ = index[0].replace(table['pkey'], f"{table['pkey']}, {table['partition']}")  
+                    new_index.append((new_, index[1]))
+                else:
+                    new_index.append(index)
+        return new_index
 
     return index_data
 
+@background
 def perform_partitioning(table):
     server = _get_tunnel()
     application_name = f"{table['schema']}.{table['name']}"
@@ -288,8 +296,8 @@ def perform_partitioning(table):
             change_owner_on_index_table(table, cur)
 
             for index in index_data:
-                idx_name = index[1]
                 idx_query = index[0]
+                idx_name = index[1]
 
                 logger.debug("Renaming index {a} to {a}_old".format(a=idx_name))
                 alter_idx = f"ALTER INDEX {idx_name} RENAME TO {idx_name}_old;"
@@ -332,11 +340,11 @@ def perform_partitioning(table):
                     d = d[0]
 
                     d = d.split(",")
-
+                    
                     d = [x.replace(" ", "") for x in d]
 
                     if len(d) > 1:
-                        d - "_".join(d)
+                        d = "_".join(d)
                     else:
                         d = d[0]
                 
@@ -365,23 +373,9 @@ def perform_partitioning(table):
     conn.close()
 
 def main():
-    tic = time.perf_counter()
     config = _get_config()
-
-    partitions = []
     for table in config['table']:
-        partition = Process(target=perform_partitioning, args=(table,))
-        partition.daemon = True
-        partitions.append(partition)
-
-    for partition in partitions:
-        partition.start()
-    
-    for partition in partitions:
-        partition.join()
-
-    toc = time.perf_counter()
-    logger.debug(f"Script completed in {toc - tic:0.4f} seconds")
+        perform_partitioning(table)
 
 if __name__ == "__main__":
     main()
