@@ -21,7 +21,7 @@ def logs(application_name="PG_Partition"):
 
   return logs
 
-logger = logs()
+logger = logs("PG_Partition")
 
 def print_psycopg2_exception(err):
     err_type, err_obj, traceback = sys.exc_info()

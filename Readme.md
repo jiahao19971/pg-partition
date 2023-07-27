@@ -146,3 +146,6 @@ production python <*.py>
 
 ## To do
 - Create a job schedular to check regularly on the max date and if the partition exist, if not then create a partition 
+
+
+## Create a daily partition worker to perform partition base on request

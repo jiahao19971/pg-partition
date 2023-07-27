@@ -17,6 +17,8 @@ alter_table_constraint = "ALTER TABLE {a}_{b} ADD CONSTRAINT {a}_{b} CHECK  ({c}
 
 attach_table_partition = "ALTER TABLE {a} ATTACH PARTITION {a}_old FOR VALUES FROM ('{b}-01-01 00:00:00') TO ('{c}-01-01 00:00:00');"
 
+attach_table_as_default_partition = "ALTER TABLE {a} ATTACH PARTITION {b} DEFAULT;"
+
 detach_partition = "ALTER TABLE {a} DETACH PARTITION {a}_{b};"
 
 attach_default_partition = "ALTER TABLE {a} ATTACH PARTITION {a}_default DEFAULT"
@@ -88,6 +90,8 @@ table_check_like = """
 default_table_check = "SELECT count(*) FROM {a}_default;"
 
 get_table_index = "select {a} from pg_indexes where tablename = '{b}' and schemaname = '{c}';"
+
+get_table_index_like = "select {a} from pg_indexes where tablename = '{b}' and schemaname = '{c}' and {a} like '{d}';"
 
 get_min_max_table = "SELECT min({a}), max({a}) FROM {b};"
 
