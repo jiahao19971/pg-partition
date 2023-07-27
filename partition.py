@@ -23,7 +23,6 @@ from common.query import (
     alter_replica_identity,
     set_search_path,
 )
-from multiprocessing import Process
 
 yaml = YAML()
 yaml.preserve_quotes = True

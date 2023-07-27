@@ -101,11 +101,10 @@ def _get_config():
 if __name__ == "__main__":
     event = {
         "table": {},
-        "year": 2017,
+        "year": 2023,
     }
     
     config = _get_config()
-    partitions = []
     for table in config['table']:
         event['table'] = table
         yearly_partition(event)
