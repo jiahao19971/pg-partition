@@ -1,149 +1,166 @@
 from dotenv import load_dotenv
-import os
-from db.db import DBLoader
-from tunnel.tunnel import Tunneler
-from common.common import _open_config, logs
-from common.query import table_check, table_check_like
+from common.common import PartitionCommon
+from common.wrapper import starter
+from common.query import table_check_like, table_check
 
 load_dotenv()
-logger = logs("PG_Reverse_Partition")
-        
-def check_table_partition(table, cur):
-    checker = table_check.format(a=table['name'], b=table['schema'])
-    cur.execute(checker)
-    data = cur.fetchall()
 
-    if "partitioned table" in list(data[0]):
-        return True
-    else:
-        return False
+class ReversePartition(PartitionCommon):
+    def __init__(self) -> None:
+        super().__init__()
 
-def check_combine_table(table, cur):
-    checker = table_check_like.format(a=f'{table["name"]}_%', b=table['schema'])
-    cur.execute(checker)
-    data = cur.fetchall()
+    def check_table_partition(self, table, cur):
+        checker = table_check.format(a=table['name'], b=table['schema'])
+        cur.execute(checker)
+        data = cur.fetchall()
 
-    table_to_be_combine = []
-    for table in data:
-        table_to_be_combine.append(list(table)[1])
+        if "partitioned table" in list(data[0]):
+            return True
+        else:
+            return False
+    
+    def check_combine_table(self, table, cur):
+        checker = table_check_like.format(a=f'{table["name"]}_%', b=table['schema'])
+        cur.execute(checker)
+        data = cur.fetchall()
 
-    return table_to_be_combine
+        table_to_be_combine = []
+        for table in data:
+            table_to_be_combine.append(list(table)[1])
 
-def main():
-    DB_HOST=os.environ['DB_HOST']
-    try:
-        server = Tunneler(DB_HOST, 5432)
+        return table_to_be_combine
+    
+    def reverse_partition(self,
+                          conn,
+                          table, 
+                          database_config,
+                          server,
+                          application_name
+                         ):
 
-        server = server.connect()
-
-        server.start()
-    except:
-        server = {
-            'local_bind_host': DB_HOST,
-            'local_bind_port': 5432,
-        }    
-
-    if os.environ['ENV'] == "staging":
-        configfile = "config.staging.yaml"
-    else:
-        configfile = "config.yaml"
-        
-    config = _open_config(configfile)
-
-    for table in config['table']:
-        application_name = f"{table['schema']}.{table['name']}"
-
-        conn = DBLoader(server, os.environ['DATABASE'], application_name=application_name)
         conn = conn.connect()
 
-        logger = logs(application_name)
-
         cur = conn.cursor()
-        qry = f"SET search_path TO '{table['schema']}'"
-        logger.info(qry)
-        cur.execute(f"{qry};")
+        try:
+            qry = f"SET search_path TO '{table['schema']}'"
+            self.logger.info(qry)
+            cur.execute(f"{qry};")
 
-        partitioning = check_table_partition(table, cur)
+            partitioning = self.check_table_partition(table, cur)
 
-        if partitioning:
-            logger.info(f"Reverting table from partition to normal table: {table['schema']}.{table['name']}")
-            collist = []
-            colname = []
-            for columnname in list(table['column'].keys()):
-                newval = f"{columnname} {table['column'][columnname]}"
-                collist.append(newval)
-                colname.append(columnname)
+            if partitioning:
+                self.logger.info(f"Reverting table from partition to normal table: {table['schema']}.{table['name']}")
+                collist = []
+                colname = []
+                for columnname in list(table['column'].keys()):
+                    newval = f"{columnname} {table['column'][columnname]}"
+                    collist.append(newval)
+                    colname.append(columnname)
 
-            table_combine = check_combine_table(table, cur)
+                table_combine = self.check_combine_table(table, cur)
 
-            create_table = f"""
-                CREATE TABLE {table['name']}_new (
-                    {", ".join(collist)},
-                    primary key ({table['pkey']})    
-                )
-            """
-
-            cur.execute(create_table)
-
-            for tab in table_combine:
-                logger.info(f"moving data from {tab} to {table['name']}_new")
-                insertation = f"INSERT INTO {table['name']}_new SELECT {','.join(colname)} FROM {tab};"
-                cur.execute(insertation)
-
-            if len(table_combine) > 0:
-                get_sequence = f"SELECT sequencename, start_value, increment_by FROM pg_sequences WHERE sequencename like '{table['name']}%' and schemaname = '{table['schema']}';"
-
-                cur.execute(get_sequence)
-
-                seq = cur.fetchall()
-                
-                drop_partitioning = f"""
-                    DROP TABLE {table['name']} CASCADE;
+                create_table = f"""
+                    CREATE TABLE {table['name']}_new (
+                        {", ".join(collist)},
+                        primary key ({table['pkey']})    
+                    )
                 """
 
-                alter_name = f"ALTER TABLE {table['name']}_new RENAME TO {table['name']};"
-                alter_idx = f"ALTER INDEX {table['name']}_new_pkey RENAME TO {table['name']}_pkey; "
+                cur.execute(create_table)
 
-                # run_analyze = f"ANALYZE {table['name']};"
+                for tab in table_combine:
+                    self.logger.info(f"Moving data from {tab} to {table['name']}_new")
+                    insertation = f"INSERT INTO {table['name']}_new SELECT {','.join(colname)} FROM {tab};"
+                    cur.execute(insertation)
 
-                cur.execute(drop_partitioning)
-                logger.debug("Rename table to original table name")
-                cur.execute(alter_name)
-                logger.debug("Rename index to original table")
-                cur.execute(alter_idx)
-                # logger.debug("Running analyze")
-                # cur.execute(run_analyze)
+                if len(table_combine) > 0:
+                    get_sequence = f"SELECT sequencename, start_value, increment_by, last_value FROM pg_sequences WHERE sequencename like '{table['name']}%' and schemaname = '{table['schema']}';"
 
-                if 'additional_index_name' in table:
-                    idxColList = []
-                    for idx_col in list(table['additional_index_name'].keys()):
-                        newval = f"CREATE INDEX {idx_col} ON {table['name']} {table['additional_index_name'][idx_col]};"
-                        idxColList.append(newval)
+                    cur.execute(get_sequence)
 
-                    for idx in idxColList:
-                        cur.execute(idx)
-
-                for sequence in seq:
-                    create_sequence = f'CREATE SEQUENCE IF NOT EXISTS "{table["schema"]}".{sequence[0]} START WITH {sequence[1]} INCREMENT BY {sequence[2]};'
-
-                    change_owner = f"""
-                        ALTER TABLE IF EXISTS "{table["schema"]}".{table['name']} OWNER TO postgres;
-                        ALTER SEQUENCE IF EXISTS "{table["schema"]}".{sequence[0]} OWNER TO postgres;
-                    """
+                    seq = cur.fetchall()
                     
-                    change_sequence_ownership = f'ALTER SEQUENCE IF EXISTS "{table["schema"]}".{sequence[0]} OWNED BY {table["name"]}.{table["pkey"]}'
+                    drop_partitioning = f"""
+                        DROP TABLE {table['name']} CASCADE;
+                    """
 
-                    logger.debug("Create sequence for table")
-                    cur.execute(create_sequence)
-                    logger.debug("Change table and sequence owner to postgres")
-                    cur.execute(change_owner)
-                    logger.debug("Change sequence ownership back to original table")
-                    cur.execute(change_sequence_ownership)
+                    alter_name = f"ALTER TABLE {table['name']}_new RENAME TO {table['name']};"
+                    alter_idx = f"ALTER INDEX {table['name']}_new_pkey RENAME TO {table['name']}_pkey; "
 
-        else:
-            logger.info(f"No reversing partition needed for table: {table['schema']}.{table['name']}")
-        conn.commit()
-    conn.close()
+                    run_analyze = f"ANALYZE {table['name']};"
+
+                    cur.execute(drop_partitioning)
+                    self.logger.debug("Rename table to original table name")
+                    cur.execute(alter_name)
+                    self.logger.debug("Rename index to original table")
+                    cur.execute(alter_idx)
+                    self.logger.debug("Running analyze")
+                    cur.execute(run_analyze)
+
+                    if 'additional_index_name' in table:
+                        idxColList = []
+                        for idx_col in list(table['additional_index_name'].keys()):
+                            newval = f"CREATE INDEX {idx_col} ON {table['name']} {table['additional_index_name'][idx_col]};"
+                            idxColList.append(newval)
+
+                        for idx in idxColList:
+                            cur.execute(idx)
+
+                    for sequence in seq:
+                        create_sequence = f'CREATE SEQUENCE IF NOT EXISTS "{table["schema"]}".{sequence[0]} START WITH {sequence[1]} INCREMENT BY {sequence[2]};'
+
+                        update_sequence = f""" select setval('"{table["schema"]}".{sequence[0]}', {sequence[3]}, true); """
+
+                        change_owner = f"""
+                            ALTER TABLE IF EXISTS "{table["schema"]}".{table['name']} OWNER TO postgres;
+                            ALTER SEQUENCE IF EXISTS "{table["schema"]}".{sequence[0]} OWNER TO postgres;
+                        """
+
+                        add_sequence_back = f"""
+                            ALTER TABLE "{table["schema"]}".{table['name']} ALTER COLUMN {table['pkey']} SET DEFAULT nextval('"{table["schema"]}".{sequence[0]}'::regclass);
+                        """
+                        
+                        change_sequence_ownership = f'ALTER SEQUENCE IF EXISTS "{table["schema"]}".{sequence[0]} OWNED BY {table["name"]}.{table["pkey"]}'
+
+                        self.logger.debug("Create sequence for table")
+                        cur.execute(create_sequence)
+                        self.logger.debug("Update sequence last value")
+                        cur.execute(update_sequence)
+                        self.logger.debug("Change table and sequence owner to postgres")
+                        cur.execute(change_owner)
+                        self.logger.debug("Change sequence ownership back to original table")
+                        cur.execute(change_sequence_ownership)
+                        self.logger.debug("Add sequence back to original table")
+                        cur.execute(add_sequence_back)
+                self.logger.info("Completed reversing partitioning")
+                conn.commit()
+                conn.close()
+            else:
+                self.logger.info(f"No reversing partition needed for table: {table['schema']}.{table['name']}")
+                conn.close()
+        except Exception as e:
+            self.logger.error(e)
+            self.logger.error("Error occured while reverse partitioning, rolling back")
+            conn.rollback()
+            conn.close()
+
+    @starter
+    def main(self, 
+            conn,
+            table, 
+            logger,
+            database_config,
+            server,
+            application_name
+        ):
+        self.logger = logger
+        self.reverse_partition(conn,
+                             table, 
+                             database_config,
+                             server,
+                             application_name
+                            )
 
 if __name__ == "__main__":
-    main()
+    reverse = ReversePartition()
+    reverse.main()

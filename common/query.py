@@ -86,6 +86,7 @@ table_check_like = """
                         AND n.nspname = '{b}'
                     ORDER BY 1,2;
 """
+get_table_existence = "SELECT count(*) FROM information_schema.tables WHERE table_schema='{a}' and table_name='{b}';"
 
 default_table_check = "SELECT count(*) FROM {a}_default;"
 
@@ -94,6 +95,8 @@ get_table_index = "select {a} from pg_indexes where tablename = '{b}' and schema
 get_table_index_like = "select {a} from pg_indexes where tablename = '{b}' and schemaname = '{c}' and {a} like '{d}';"
 
 get_min_max_table = "SELECT min({a}), max({a}) FROM {b};"
+
+get_min_table = "SELECT min({a}) FROM {b} LIMIT 1;"
 
 get_order_by_limit_1 = "SELECT {a} FROM {b} ORDER BY {c} {d} LIMIT 1;"
 
