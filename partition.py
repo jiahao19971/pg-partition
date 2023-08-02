@@ -5,7 +5,7 @@ from common.common import (
     PartitionCommon,
     background,
 )
-from common.wrapper import starter
+from common.wrapper import get_config_n_secret
 from ruamel.yaml import YAML
 from common.query import (
     create_table_with_partitioning, 
@@ -251,7 +251,7 @@ class Partition(PartitionCommon):
             conn.rollback()
             conn.close()
 
-    @starter
+    @get_config_n_secret
     def main(self, 
             conn,
             table, 

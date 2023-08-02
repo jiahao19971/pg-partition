@@ -14,7 +14,7 @@ from common.common import (
     background, 
     PartitionCommon
 )
-from common.wrapper import starter
+from common.wrapper import get_config_n_secret
 
 class YearlyPartition(PartitionCommon):
     def __init__(self) -> None:
@@ -107,7 +107,7 @@ class YearlyPartition(PartitionCommon):
             conn.rollback()
             conn.close()
 
-    @starter
+    @get_config_n_secret
     def main(self, 
             conn,
             table, 

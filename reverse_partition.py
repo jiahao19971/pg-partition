@@ -1,6 +1,6 @@
 from dotenv import load_dotenv
 from common.common import PartitionCommon
-from common.wrapper import starter
+from common.wrapper import get_config_n_secret
 from common.query import table_check_like, table_check
 
 load_dotenv()
@@ -144,7 +144,7 @@ class ReversePartition(PartitionCommon):
             conn.rollback()
             conn.close()
 
-    @starter
+    @get_config_n_secret
     def main(self, 
             conn,
             table, 

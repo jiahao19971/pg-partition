@@ -2,7 +2,7 @@ from tunnel.tunnel import _get_tunnel
 from sshtunnel import SSHTunnelForwarder
 from db.db import _get_db
 
-def starter(func):
+def get_config_n_secret(func):
     def wrapped(*args):
         self = args[0]
         

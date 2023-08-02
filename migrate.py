@@ -2,7 +2,7 @@ from dotenv import load_dotenv
 import datetime, os, subprocess, time
 import json, os
 from common.common import PartitionCommon
-from common.wrapper import starter
+from common.wrapper import get_config_n_secret
 import boto3, botocore, multiprocessing
 from common.query import (
     get_order_by_limit_1,
@@ -291,7 +291,7 @@ class MigratePartition(PartitionCommon):
             conn.rollback()
             conn.close()
         
-    @starter
+    @get_config_n_secret
     def main(self, 
             conn,
             table, 
