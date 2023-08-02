@@ -171,13 +171,7 @@ class MigratePartition(PartitionCommon):
         self.logger.info(f"Removed from local directory: {table_sql}")
 
 
-    def migrate_run(self,
-                    conn,
-                    table, 
-                    database_config,
-                    server,
-                    application_name
-                    ):
+    def migrate_run(self, conn, table, database_config):
         
         conn = conn.connect()
         cur = conn.cursor()
@@ -301,11 +295,7 @@ class MigratePartition(PartitionCommon):
             application_name
         ):
         self.logger = logger
-        self.migrate_run(conn,
-                        table,
-                        database_config,
-                        server,
-                        application_name)
+        self.migrate_run(conn, table, database_config)
 
 if __name__ == "__main__":
     migrate = MigratePartition()

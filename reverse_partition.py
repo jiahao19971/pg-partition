@@ -30,13 +30,7 @@ class ReversePartition(PartitionCommon):
 
         return table_to_be_combine
     
-    def reverse_partition(self,
-                          conn,
-                          table, 
-                          database_config,
-                          server,
-                          application_name
-                         ):
+    def reverse_partition(self, conn, table):
 
         conn = conn.connect()
 
@@ -154,12 +148,7 @@ class ReversePartition(PartitionCommon):
             application_name
         ):
         self.logger = logger
-        self.reverse_partition(conn,
-                             table, 
-                             database_config,
-                             server,
-                             application_name
-                            )
+        self.reverse_partition(conn, table)
 
 if __name__ == "__main__":
     reverse = ReversePartition()

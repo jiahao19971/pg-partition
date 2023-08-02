@@ -42,14 +42,7 @@ class YearlyPartition(PartitionCommon):
         cur.execute(attach_as_default)
 
     @background
-    def yearly_partition(self, 
-                         conn,
-                         table, 
-                         database_config,
-                         server,
-                         application_name,
-                         event
-                        ):
+    def yearly_partition(self, conn, table, event):
         table     = event['table']
         year      = event['year']
         _, colname = self._get_column(table)
@@ -122,13 +115,7 @@ class YearlyPartition(PartitionCommon):
             "year": 2017,
         }
         self.logger = logger
-        self.yearly_partition(conn,
-                             table,
-                             database_config,
-                             server,
-                             application_name,
-                             event
-                            )
+        self.yearly_partition(conn, table, event)
 
 if __name__ == "__main__":
     yearly = YearlyPartition()
