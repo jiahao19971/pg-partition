@@ -11,20 +11,6 @@ from common.query import (
     
 load_dotenv()
 
-# access_key = os.environ['AWS_ACCESS_KEY']
-# secret_access_key = os.environ['AWS_SECRET_ACCESS_KEY']
-# regions = os.environ['REGION']
-# lambda_arn = os.environ['LAMBDA_ARN']
-# bucket_name = os.environ['BUCKET_NAME']
-# DB_PASSWORD = os.environ['PASSWORD']
-# DB_NAME = os.environ['DATABASE']
-# DB_USERNAME = os.environ['USERNAME']
-# DB_SSLROOTCERT = os.environ['DB_SSLROOTCERT']
-# DB_SSLCERT = os.environ['DB_SSLCERT']
-# DB_SSLKEY = os.environ['DB_SSLKEY']
-# DB_SSLMODE = os.environ['DB_SSLMODE']
-# DB_HOST=os.environ['DB_HOST']
-
 class MigratePartition(PartitionCommon):
     def __init__(self) -> None:
         super().__init__()
