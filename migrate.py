@@ -1,12 +1,9 @@
 from dotenv import load_dotenv
 import datetime, os, subprocess, time
-from db.db import _get_db
 import json, os
 from common.common import PartitionCommon
 from common.wrapper import starter
 import boto3, botocore, multiprocessing
-from sshtunnel import SSHTunnelForwarder
-from tunnel.tunnel import _get_tunnel
 from common.query import (
     get_order_by_limit_1,
     table_check

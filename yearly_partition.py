@@ -9,7 +9,6 @@ from common.query import (
     attach_table_as_default_partition,
     get_min_table
 )
-from sshtunnel import SSHTunnelForwarder
 import os
 from common.common import (
     background, 
