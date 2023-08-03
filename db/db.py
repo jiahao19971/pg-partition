@@ -89,9 +89,9 @@ class DBLoader(PartitionCommon):
 
         if self.db_pass is not False:
             db_connector["password"] = self.db_pass
-
+            
         try:
-            conn = psycopg2.connect(*db_connector)
+            conn = psycopg2.connect(**db_connector)
         except:
             if self.db_sslmode is not False and self.db_sslrootcert is not False:
                 db_connector["sslmode"] = self.db_sslmode

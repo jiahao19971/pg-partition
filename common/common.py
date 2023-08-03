@@ -1,4 +1,4 @@
-import sys, json, logging, asyncio, os
+import sys, json, logging, os
 from cerberus import Validator
 from ruamel.yaml import YAML, YAMLError
 from functools import lru_cache
@@ -14,13 +14,6 @@ logging.basicConfig(
    format="%(asctime)s - %(levelname)s: %(APPNAME)s @ %(message)s", 
    datefmt='%Y-%m-%d %H:%M:%S'
 )
-
-def background(f):
-    def wrapped(*args, **kwargs):
-        return asyncio.get_event_loop().run_in_executor(None, f, *args, **kwargs)
-
-    return wrapped
-
 
 class ContextFilter(logging.Filter):
     """

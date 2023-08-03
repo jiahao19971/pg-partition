@@ -24,6 +24,6 @@ class PartitioningValidator(Validator):
       elif "remote_key" not in self.document and "remote_password" not in self.document:
         self._error("remote_key", FILED_EXIST_ERROR)
         self._error("remote_password", FILED_EXIST_ERROR)
-    elif field == "db_password" and value:
-      if "db_ssl" not in self.document:  
+    elif field == "db_ssl" and value:
+      if "db_password" not in self.document:  
         self._error("db_password", errors.REQUIRED_FIELD, "check_with")

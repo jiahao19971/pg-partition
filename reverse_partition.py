@@ -1,6 +1,9 @@
 from dotenv import load_dotenv
+from db.db import _get_db
+from sshtunnel import SSHTunnelForwarder
+from tunnel.tunnel import _get_tunnel
 from common.common import PartitionCommon
-from common.wrapper import get_config_n_secret
+from common.wrapper import get_config_n_secret, background
 from common.query import table_check_like, table_check
 
 load_dotenv()
@@ -30,20 +33,26 @@ class ReversePartition(PartitionCommon):
 
         return table_to_be_combine
     
-    def reverse_partition(self, conn, table):
+    @background
+    def reverse_partition(self, table, database_config, application_name):
+        db_identifier = database_config['db_identifier']
+        logger = self.logging_func(application_name=application_name)
+
+        server = _get_tunnel(database_config)
+        conn = _get_db(server, database_config, application_name)
+        logger.debug(f"Connected: {db_identifier}")
 
         conn = conn.connect()
-
         cur = conn.cursor()
         try:
             qry = f"SET search_path TO '{table['schema']}'"
-            self.logger.info(qry)
+            logger.info(qry)
             cur.execute(f"{qry};")
 
             partitioning = self.check_table_partition(table, cur)
 
             if partitioning:
-                self.logger.info(f"Reverting table from partition to normal table: {table['schema']}.{table['name']}")
+                logger.info(f"Reverting table from partition to normal table: {table['schema']}.{table['name']}")
                 collist = []
                 colname = []
                 for columnname in list(table['column'].keys()):
@@ -63,7 +72,7 @@ class ReversePartition(PartitionCommon):
                 cur.execute(create_table)
 
                 for tab in table_combine:
-                    self.logger.info(f"Moving data from {tab} to {table['name']}_new")
+                    logger.info(f"Moving data from {tab} to {table['name']}_new")
                     insertation = f"INSERT INTO {table['name']}_new SELECT {','.join(colname)} FROM {tab};"
                     cur.execute(insertation)
 
@@ -84,11 +93,11 @@ class ReversePartition(PartitionCommon):
                     run_analyze = f"ANALYZE {table['name']};"
 
                     cur.execute(drop_partitioning)
-                    self.logger.debug("Rename table to original table name")
+                    logger.debug("Rename table to original table name")
                     cur.execute(alter_name)
-                    self.logger.debug("Rename index to original table")
+                    logger.debug("Rename index to original table")
                     cur.execute(alter_idx)
-                    self.logger.debug("Running analyze")
+                    logger.debug("Running analyze")
                     cur.execute(run_analyze)
 
                     if 'additional_index_name' in table:
@@ -116,39 +125,33 @@ class ReversePartition(PartitionCommon):
                         
                         change_sequence_ownership = f'ALTER SEQUENCE IF EXISTS "{table["schema"]}".{sequence[0]} OWNED BY {table["name"]}.{table["pkey"]}'
 
-                        self.logger.debug("Create sequence for table")
+                        logger.debug("Create sequence for table")
                         cur.execute(create_sequence)
-                        self.logger.debug("Update sequence last value")
+                        logger.debug("Update sequence last value")
                         cur.execute(update_sequence)
-                        self.logger.debug("Change table and sequence owner to postgres")
+                        logger.debug("Change table and sequence owner to postgres")
                         cur.execute(change_owner)
-                        self.logger.debug("Change sequence ownership back to original table")
+                        logger.debug("Change sequence ownership back to original table")
                         cur.execute(change_sequence_ownership)
-                        self.logger.debug("Add sequence back to original table")
+                        logger.debug("Add sequence back to original table")
                         cur.execute(add_sequence_back)
-                self.logger.info("Completed reversing partitioning")
+                logger.info("Completed reversing partitioning")
                 conn.commit()
                 conn.close()
             else:
-                self.logger.info(f"No reversing partition needed for table: {table['schema']}.{table['name']}")
+                logger.info(f"No reversing partition needed for table: {table['schema']}.{table['name']}")
                 conn.close()
+            if type(server) == SSHTunnelForwarder:
+                server.stop()
         except Exception as e:
-            self.logger.error(e)
-            self.logger.error("Error occured while reverse partitioning, rolling back")
+            logger.error(e)
+            logger.error("Error occured while reverse partitioning, rolling back")
             conn.rollback()
             conn.close()
 
     @get_config_n_secret
-    def main(self, 
-            conn,
-            table, 
-            logger,
-            database_config,
-            server,
-            application_name
-        ):
-        self.logger = logger
-        self.reverse_partition(conn, table)
+    def main(self, table, database_config, application_name):
+        self.reverse_partition(table, database_config, application_name)
 
 if __name__ == "__main__":
     reverse = ReversePartition()

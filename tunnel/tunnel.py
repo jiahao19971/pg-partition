@@ -143,7 +143,7 @@ def _get_tunnel(database_config):
     local = {
             'local_bind_host': DB_HOST,
             'local_bind_port': DB_PORT,
-        }  
+        }
     if REMOTE_HOST is False:
         server = local
     else:

@@ -1,11 +1,10 @@
 from dotenv import load_dotenv
 import re, os
+from common.common import PartitionCommon
+from tunnel.tunnel import _get_tunnel
 from db.db import _get_db
-from common.common import (
-    PartitionCommon,
-    background,
-)
-from common.wrapper import get_config_n_secret
+from sshtunnel import SSHTunnelForwarder
+from common.wrapper import get_config_n_secret, background
 from ruamel.yaml import YAML
 from common.query import (
     create_table_with_partitioning, 
@@ -132,17 +131,22 @@ class Partition(PartitionCommon):
     
     @background
     def perform_partitioning(self, 
-                             conn,
-                             table, 
+                             table,
                              database_config,
-                             server,
                              application_name
                             ):
+        db_identifier = database_config['db_identifier']
+        logger = self.logging_func(application_name=application_name)
+
+        server = _get_tunnel(database_config)
+        conn = _get_db(server, database_config, application_name)
+        logger.debug(f"Connected: {db_identifier}")
+
         conn = conn.connect()
         cur = conn.cursor()
         try:
             set_searchPath = set_search_path.format(a=table['schema'])
-            self.logger.debug(set_searchPath)
+            logger.debug(set_searchPath)
             cur.execute(set_searchPath)
 
             index_data = self.get_index_required(table, cur)
@@ -155,21 +159,6 @@ class Partition(PartitionCommon):
             collist, _ = self._get_column(table)
 
             if partitioning:
-                alter_table_partition_key_to_not_null = f"""
-                    ALTER TABLE "{table['schema']}".{table['name']} ALTER COLUMN {table['partition']} SET NOT NULL;
-                """
-                self.logger.debug("Alter table partition column with not null")
-                cur.execute(alter_table_partition_key_to_not_null)
-
-                alter_old_table_pkey = f"""
-                    ALTER TABLE "{table['schema']}".{table['name']} 
-                    DROP CONSTRAINT {table['name']}_pkey,
-                    ADD PRIMARY KEY ({table['pkey']}, {table['partition']})
-                """
-
-                self.logger.debug("Added table primary key with partition column")
-                cur.execute(alter_old_table_pkey)
-                
                 self.create_partitioning(collist, table, cur)
 
                 self.change_owner_on_index_table(table, cur)
@@ -178,7 +167,7 @@ class Partition(PartitionCommon):
                     idx_query = index[0]
                     idx_name = index[1]
 
-                    self.logger.debug("Renaming index {a} to {a}_old".format(a=idx_name))
+                    logger.debug("Renaming index {a} to {a}_old".format(a=idx_name))
                     alter_idx = f"ALTER INDEX {idx_name} RENAME TO {idx_name}_old;"
                     cur.execute(alter_idx)
 
@@ -200,15 +189,15 @@ class Partition(PartitionCommon):
                 new_cur = new_conn.cursor()
 
                 set_searchPath = set_search_path.format(a=table['schema'])
-                self.logger.debug(set_searchPath)
+                logger.debug(set_searchPath)
                 new_cur.execute(set_searchPath)
 
                 new_idx_name = f'{table["name"]}_old_{table["pkey"]}_{table["partition"]}_idx'
 
-                self.logger.debug(f"Creating new unique index concurrently for {new_idx_name}")
+                logger.debug(f"Creating new unique index concurrently for {new_idx_name}")
                 new_cur.execute(f'CREATE UNIQUE INDEX CONCURRENTLY {new_idx_name} ON {table["name"]}_old USING btree ({table["pkey"]}, {table["partition"]});')
 
-                self.logger.debug(f"Attaching index {new_idx_name} to partition index {table['name']}_pkey")
+                logger.debug(f"Attaching index {new_idx_name} to partition index {table['name']}_pkey")
                 new_cur.execute(f"ALTER INDEX {table['name']}_pkey ATTACH PARTITION {new_idx_name};")
 
                 if 'additional_index_name' in table:
@@ -229,10 +218,10 @@ class Partition(PartitionCommon):
                     
                         addon_new_idx_name = f"{table['name']}_old_{d}_idx"
                         
-                        self.logger.debug(f"Creating new index concurrently for {addon_new_idx_name}")
+                        logger.debug(f"Creating new index concurrently for {addon_new_idx_name}")
                         newval = f"CREATE INDEX CONCURRENTLY {addon_new_idx_name} ON {table['name']}_old {table['additional_index_name'][idx_col]};"
 
-                        self.logger.debug(f"Attaching index {addon_new_idx_name} to partition index {idx_col}")
+                        logger.debug(f"Attaching index {addon_new_idx_name} to partition index {idx_col}")
                         newalter = f"ALTER INDEX {idx_col} ATTACH PARTITION {addon_new_idx_name};"
 
                         idxColList.append(newval)
@@ -242,31 +231,19 @@ class Partition(PartitionCommon):
                         new_cur.execute(idx)
                 new_conn.close()
             else:
-                self.logger.info(f"No partitioning needed, as table already partition: {table['schema']}.{table['name']}")
-                conn.commit()
+                logger.info(f"No partitioning needed, as table already partition: {table['schema']}.{table['name']}")
                 conn.close()
+            if type(server) == SSHTunnelForwarder:
+                server.stop()
         except Exception as e:
-            self.logger.error(e)
-            self.logger.error("Error occured while partitioning, rolling back")
+            logger.error(e)
+            logger.error("Error occured while partitioning, rolling back")
             conn.rollback()
             conn.close()
 
     @get_config_n_secret
-    def main(self, 
-            conn,
-            table, 
-            logger,
-            database_config,
-            server,
-            application_name
-        ):
-        self.logger = logger
-        self.perform_partitioning(conn,
-                             table, 
-                             database_config,
-                             server,
-                             application_name
-                            )
+    def main(self, table, database_config, application_name):
+        self.perform_partitioning(table, database_config, application_name)
 
 
 if __name__ == "__main__":
