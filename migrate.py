@@ -21,8 +21,12 @@ def invoked_client(key, database_config):
     cfg = botocore.config.Config(read_timeout=900, connect_timeout=900)
     aws_config = database_config['aws']
 
-    lambda_access_key = aws_config['lambda_aws_access_key']
-    lambda_secret_access_key = aws_config['lambda_aws_secret_access_key']
+    if "lambda_aws_access_key" in aws_config:
+        lambda_access_key = aws_config['lambda_aws_access_key']
+        lambda_secret_access_key = aws_config['lambda_aws_secret_access_key']
+    else:
+        lambda_access_key = aws_config['aws_access_key']
+        lambda_access_key = aws_config['aws_secret_access_key']
 
     lambda_session = boto3.Session(
             aws_access_key_id=lambda_access_key,
