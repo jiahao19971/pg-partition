@@ -1,15 +1,12 @@
 """
-    CheckBlocker checked the database if there is any 
-    blocked query.
-
-    Args:
-      No args needed
-
-    Returns:
-      [dict]: [blocked query]
-""" 
+    Check_blocker module is used to check if there is any block query
+    It utilize psycopy2 to connect to the database and execute the query
+    Additional feature: it is able to perform tunneling to the database
+"""
 import time
+
 from dotenv import load_dotenv
+
 from common.common import PartitionCommon
 from common.wrapper import get_config_n_secret
 from db.db import _get_db
@@ -20,17 +17,18 @@ load_dotenv()
 
 class CheckBlocker(PartitionCommon):
   """
-    CheckBlocker checked the database if there is any 
-    blocked query.
+  CheckBlocker checked the database if there is any
+  blocked query.
 
-    Args:
-      No args needed
+  Args:
+    No args needed
 
-    Returns:
-      [dict]: [blocked query]
-  """ 
+  Returns:
+    [dict]: [blocked query]
+  """
+
   @get_config_n_secret
-  def main(self, table, database_config, application_name):
+  def main(self, table=None, database_config=None, application_name=None):
     db_identifier = database_config["db_identifier"]
     logger = self.logging_func(application_name=application_name)
 
