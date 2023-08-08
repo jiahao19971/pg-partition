@@ -11,8 +11,9 @@ import os
 import re
 
 from dotenv import load_dotenv
+from psycopg2 import Error
 from ruamel.yaml import YAML
-from sshtunnel import SSHTunnelForwarder
+from sshtunnel import BaseSSHTunnelForwarderError, SSHTunnelForwarder
 
 from common.common import PartitionCommon
 from common.query import (
@@ -27,8 +28,8 @@ from common.query import (
   set_search_path,
 )
 from common.wrapper import background, get_config_n_secret
-from db.db import _get_db
-from tunnel.tunnel import _get_tunnel
+from db.db import get_db
+from tunnel.tunnel import get_tunnel
 
 yaml = YAML()
 yaml.preserve_quotes = True
@@ -173,16 +174,17 @@ class Partition(PartitionCommon):
 
   @background
   def perform_partitioning(self, table, database_config, application_name):
-    db_identifier = database_config["db_identifier"]
-    logger = self.logging_func(application_name=application_name)
-
-    server = _get_tunnel(database_config)
-    conn = _get_db(server, database_config, application_name)
-    logger.debug(f"Connected: {db_identifier}")
-
-    conn = conn.connect()
-    cur = conn.cursor()
     try:
+      db_identifier = database_config["db_identifier"]
+      logger = self.logging_func(application_name=application_name)
+
+      server = get_tunnel(database_config)
+      conn = get_db(server, database_config, application_name)
+
+      conn = conn.connect()
+      logger.debug(f"Connected: {db_identifier}")
+      cur = conn.cursor()
+
       search_path = set_search_path.format(a=table["schema"])
       logger.debug(search_path)
       cur.execute(search_path)
@@ -222,7 +224,7 @@ class Partition(PartitionCommon):
           idx_query = index[0]
           idx_name = index[1]
 
-          logger.debug("Renaming index {a} to {a}_old".format(a=idx_name))
+          logger.debug(f"Renaming index {idx_name} to {idx_name}_old")
           alter_idx = f"ALTER INDEX {idx_name} RENAME TO {idx_name}_old;"
           cur.execute(alter_idx)
 
@@ -242,7 +244,7 @@ class Partition(PartitionCommon):
         conn.commit()
         conn.close()
 
-        new_conn = _get_db(server, database_config, application_name)
+        new_conn = get_db(server, database_config, application_name)
         new_conn = new_conn.connect()
         new_conn.autocommit = True
         new_cur = new_conn.cursor()
@@ -266,10 +268,11 @@ class Partition(PartitionCommon):
         )
 
         logger.debug(
-          f"""
-            Attaching index {new_idx_name} to
-            partition index {table['name']}_pkey
-          """
+          f"""Attaching index {
+            new_idx_name
+          } to partition index {
+            table['name']
+          }_pkey"""
         )
         new_cur.execute(
           f"""
@@ -308,13 +311,11 @@ class Partition(PartitionCommon):
             """
 
             logger.debug(
-              f"""
-                Attaching index {
+              f"""Attaching index {
                   addon_new_idx_name
                 } to partition index {
                   idx_col
-                }
-              """
+                }"""
             )
             newalter = (
               f"ALTER INDEX {idx_col} ATTACH PARTITION {addon_new_idx_name};"
@@ -328,23 +329,25 @@ class Partition(PartitionCommon):
         new_conn.close()
       else:
         logger.info(
-          f"""
-            No partitioning needed, as table already partition: {
-              table['schema']
+          f"""No partitioning needed, as table already partition: {
+            table['schema']
             }.{
               table['name']
-            }
-          """
+            }"""
         )
         conn.close()
-      if isinstance(server, SSHTunnelForwarder):
-        server.stop()
-    # pylint: disable=broad-except
-    except Exception as e:
-      logger.error(e)
-      logger.error("Error occured while partitioning, rolling back")
+
+    except BaseSSHTunnelForwarderError as e:
+      self.logger.error(e)
       conn.rollback()
       conn.close()
+    except Error as opte:
+      self.print_psycopg2_exception(opte)
+      conn.rollback()
+      conn.close()
+    finally:
+      if isinstance(server, SSHTunnelForwarder):
+        server.stop()
 
   @get_config_n_secret
   def main(self, table=None, database_config=None, application_name=None):

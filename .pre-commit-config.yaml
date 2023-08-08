@@ -29,7 +29,10 @@ repos:
                 .coverage|
                 requirements.txt|
                 README.md|
-                docker-compose.yaml|
+                Readme.md|
+                \**docker-compose.yaml|
+                database/docker-compose.yaml|
+                lambda/get_chunked_data.zip|
                 Dockerfile|
                 .dockerignore|
                 secret.json|
@@ -39,7 +42,7 @@ repos:
                 expected.json|
                 \*.png|
                 .gitignore|
-                .github/workflows/pipeline.yml
+                .github/workflows/image_build.yaml
             )$
 
 

@@ -4,13 +4,14 @@
     Additional feature: it is able to perform tunneling to the database
 """
 from dotenv import load_dotenv
-from sshtunnel import SSHTunnelForwarder
+from psycopg2 import Error
+from sshtunnel import BaseSSHTunnelForwarderError, SSHTunnelForwarder
 
 from common.common import PartitionCommon
-from common.query import table_check, table_check_like
-from common.wrapper import background, get_config_n_secret
-from db.db import _get_db
-from tunnel.tunnel import _get_tunnel
+from common.query import table_check_like
+from common.wrapper import get_config_n_secret
+from db.db import get_db
+from tunnel.tunnel import get_tunnel
 
 load_dotenv()
 
@@ -27,18 +28,9 @@ class ReversePartition(PartitionCommon):
     No returns
   """
 
-  def check_table_partition(self, table, cur):
-    checker = table_check.format(a=table["name"], b=table["schema"])
-    cur.execute(checker)
-    data = cur.fetchall()
-
-    partition = bool("partitioned table" in list(data[0]))
-
-    return partition
-
   def check_combine_table(self, table, cur):
     checker = table_check_like.format(
-      a=f'{table["name"]}__%', b=table["schema"]
+      a=rf'{table["name"]}\_%', b=table["schema"]
     )
     cur.execute(checker)
     data = cur.fetchall()
@@ -49,33 +41,31 @@ class ReversePartition(PartitionCommon):
 
     return table_to_be_combine
 
-  @background
   def reverse_partition(self, table, database_config, application_name):
-    db_identifier = database_config["db_identifier"]
-    logger = self.logging_func(application_name=application_name)
-
-    server = _get_tunnel(database_config)
-    conn = _get_db(server, database_config, application_name)
-    logger.debug(f"Connected: {db_identifier}")
-
-    conn = conn.connect()
-    cur = conn.cursor()
     try:
+      db_identifier = database_config["db_identifier"]
+      logger = self.logging_func(application_name=application_name)
+
+      server = get_tunnel(database_config)
+      conn = get_db(server, database_config, application_name)
+
+      conn = conn.connect()
+      logger.debug(f"Connected: {db_identifier}")
+      cur = conn.cursor()
+
       qry = f"SET search_path TO '{table['schema']}'"
       logger.info(qry)
       cur.execute(f"{qry};")
 
-      partitioning = self.check_table_partition(table, cur)
+      partitioning = self.reverse_check_table_partition(table, cur)
 
       if partitioning:
         logger.info(
-          f"""
-          Reverting table from partition to normal table: {
+          f"""Reverting table from partition to normal table: {
             table['schema']
           }.{
             table['name']
-          }
-          """
+          }"""
         )
         collist = []
         colname = []
@@ -98,11 +88,9 @@ class ReversePartition(PartitionCommon):
         for tab in table_combine:
           logger.info(f"Moving data from {tab} to {table['name']}_new")
           insertation = f"""
-            INSERT INTO {
-              table['name']
-            }_new SELECT {
-              ','.join(colname)
-            } FROM {tab};
+            INSERT INTO {table['name']}_new
+            SELECT {','.join(colname)}
+            FROM {tab};
           """
           cur.execute(insertation)
 
@@ -203,14 +191,17 @@ class ReversePartition(PartitionCommon):
             }"""
         )
         conn.close()
-      if isinstance(server, SSHTunnelForwarder):
-        server.stop()
-    # pylint: disable=broad-except
-    except Exception as e:
-      logger.error(e)
-      logger.error("Error occured while reverse partitioning, rolling back")
+    except BaseSSHTunnelForwarderError as e:
+      self.logger.error(e)
       conn.rollback()
       conn.close()
+    except Error as opte:
+      self.print_psycopg2_exception(opte)
+      conn.rollback()
+      conn.close()
+    finally:
+      if isinstance(server, SSHTunnelForwarder):
+        server.stop()
 
   @get_config_n_secret
   def main(self, table=None, database_config=None, application_name=None):

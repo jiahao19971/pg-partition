@@ -14,13 +14,14 @@ from functools import partial
 import boto3
 import botocore
 from dotenv import load_dotenv
-from sshtunnel import SSHTunnelForwarder
+from psycopg2 import Error
+from sshtunnel import BaseSSHTunnelForwarderError, SSHTunnelForwarder
 
 from common.common import PartitionCommon
 from common.query import get_order_by_limit_1, table_check
 from common.wrapper import get_config_n_secret
-from db.db import _get_db
-from tunnel.tunnel import _get_tunnel
+from db.db import get_db
+from tunnel.tunnel import get_tunnel
 
 load_dotenv()
 
@@ -158,8 +159,7 @@ class MigratePartition(PartitionCommon):
 
     ssl = ""
     if "sslmode" in new_conn and "sslrootcert" in new_conn:
-      ssl = f"""
-        ?sslrootcert={
+      ssl = f"""?sslrootcert={
           new_conn["sslrootcert"]
         }&sslcert={
           new_conn["sslcert"]
@@ -167,8 +167,7 @@ class MigratePartition(PartitionCommon):
           new_conn["sslkey"]
         }&sslmode={
           new_conn["sslmode"]
-        }
-      """
+        }"""
     elif "sslmode" in new_conn and "sslrootcert" not in new_conn:
       ssl = f"?sslmode={new_conn['sslmode']}"
 
@@ -199,17 +198,18 @@ class MigratePartition(PartitionCommon):
       self.logger.info(f"Removed from local directory: {table_sql}")
 
   def migrate_run(self, table, database_config, application_name):
-    db_identifier = database_config["db_identifier"]
-    logger = self.logging_func(application_name=application_name)
-
-    server = _get_tunnel(database_config)
-    db_conn = _get_db(server, database_config, application_name)
-    logger.debug(f"Connected: {db_identifier}")
-
-    conn = db_conn.connect()
-
-    cur = conn.cursor()
     try:
+      db_identifier = database_config["db_identifier"]
+      logger = self.logging_func(application_name=application_name)
+
+      server = get_tunnel(database_config)
+      db_conn = get_db(server, database_config, application_name)
+
+      conn = db_conn.connect()
+      logger.debug(f"Connected: {db_identifier}")
+
+      cur = conn.cursor()
+
       rds_client = self.session.client("rds")
 
       db_identifier = database_config["db_identifier"]
@@ -276,8 +276,7 @@ class MigratePartition(PartitionCommon):
 
             count_table = cur.fetchall()
             now = datetime.datetime.now()
-            file_name = f"""
-              {
+            file_name = f"""{
                 table["schema"]
               }_{
                 table["name"]
@@ -285,8 +284,7 @@ class MigratePartition(PartitionCommon):
                 new_year
               }_{
                 now.strftime("%Y%m%d%H%M%S")
-              }
-            """
+              }"""
 
             path = f"{db_name}/{table['schema']}/{table['name']}/{new_year}"
             file = f"{path}/{file_name}"
@@ -320,7 +318,6 @@ class MigratePartition(PartitionCommon):
                 tables, table_sql, file_name, self.bucket_name, path, db_url
               )
             except subprocess.CalledProcessError as exp:
-              logger.error(exp)
               raise exp
             finally:
               count_tb = self.get_count_from_s3(path, database_config)
@@ -344,15 +341,22 @@ class MigratePartition(PartitionCommon):
         logger.info(
           f"No migration needed for: {table['schema']}.{table['name']}"
         )
-    # pylint: disable=broad-except
-    except Exception as e:
-      conn.rollback()
+    except (
+      BaseSSHTunnelForwarderError,
+      subprocess.CalledProcessError,
+      ValueError,
+      botocore.exceptions.ClientError,
+    ) as e:
       self.logger.error(e)
-      self.logger.error("Error occured while partitioning, rolling back")
+      conn.rollback()
+      conn.close()
+    except Error as opte:
+      self.print_psycopg2_exception(opte)
+      conn.rollback()
+      conn.close()
     finally:
       if isinstance(server, SSHTunnelForwarder):
         server.stop()
-      conn.close()
 
   @get_config_n_secret
   def main(self, table=None, database_config=None, application_name=None):

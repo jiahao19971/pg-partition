@@ -1,11 +1,13 @@
-"""This is the main enum for TunnelHandler
-
+"""
+This is the main enum for TunnelHandler
 Consist of all static variable in the tunnel
 """
 from enum import Enum
 
+
 class DEBUGGER(Enum):
-  """This enum consist of the log env parameter
+  """
+  This enum consist of the log env parameter
 
   It is used to validate if the log provided is
   fall into the list below

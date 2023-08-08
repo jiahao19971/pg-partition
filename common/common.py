@@ -1,3 +1,10 @@
+"""
+    PartitionCommon module is used as
+    the parent class for partitioning
+
+    It is used to specify the common function
+    required for the partitioning process
+"""
 import json
 import logging
 import os
@@ -7,7 +14,7 @@ from functools import lru_cache
 from cerberus import Validator
 from ruamel.yaml import YAML, YAMLError
 
-from common.commonEnum import DEBUGGER
+from common.common_enum import DEBUGGER
 from common.query import table_check
 from common.validator import PartitioningValidator
 
@@ -16,26 +23,24 @@ yaml = YAML()
 yaml.preserve_quotes = True
 
 logging.basicConfig(
-  format="%(asctime)s - %(levelname)s: %(APPNAME)s @ %(message)s",
+  format="%(asctime)s - %(levelname)s: %(name)s @ %(message)s",
   datefmt="%Y-%m-%d %H:%M:%S",
 )
 
 
-class ContextFilter(logging.Filter):
-  """
-  This is a filter which injects contextual information into the log.
-  """
-
-  def __init__(self, appname):
-    self.appname = appname
-    super
-
-  def filter(self, record):
-    record.APPNAME = self.appname
-    return True
-
-
 class PartitionCommon:
+  """
+  PartitionCommon class is used to
+  main class to specify the common function
+  required for the partitioning process
+
+  Args:
+    No args needed
+
+  Returns:
+    No returns
+  """
+
   env_string = (
     "Environment variable %s was not found/have issue, "
     "switching back to default value: %s"
@@ -67,37 +72,33 @@ class PartitionCommon:
       return logging.DEBUG
 
   def logging_func(self, application_name="PG_Partition"):
-    logs = logging.LoggerAdapter(
-      logging.getLogger("PGPartition"), {"APPNAME": application_name}
-    )
+    logger = logging.getLogger(application_name)
+    return logger
 
-    return logs
-
-  def check_table_partition(self, table, cur):
+  def reverse_check_table_partition(self, table, cur):
     checker = table_check.format(a=table["name"], b=table["schema"])
     cur.execute(checker)
     data = cur.fetchall()
 
-    if "partitioned table" in list(data[0]):
-      return True
-    else:
-      return False
+    partition = bool("partitioned table" in list(data[0]))
+
+    return partition
 
   def print_psycopg2_exception(self, err):
-    err_type, err_obj, traceback = sys.exc_info()
+    err_type, _, traceback = sys.exc_info()
 
     # get the line number when exception occured
     line_num = traceback.tb_lineno
 
-    self.logger.error("\npsycopg2 ERROR:", err, "on line number:", line_num)
-    self.logger.error("psycopg2 traceback:", traceback, "-- type:", err_type)
+    self.logger.error(f"psycopg2 ERROR: {err} on line number: {line_num}")
+    self.logger.error(f"psycopg2 traceback: {traceback} -- type: {err_type}")
 
     # psycopg2 extensions.Diagnostics object attribute
-    self.logger.error("\nextensions.Diagnostics:", err.diag)
+    self.logger.error(f"extensions.Diagnostics: {err.diag}")
 
     # print the pgcode and pgerror exceptions
-    self.logger.error("pgerror:", err.pgerror)
-    self.logger.error("pgcode:", err.pgcode, "\n")
+    self.logger.error(f"pgerror: {err.pgerror}")
+    self.logger.error(f"pgcode: {err.pgcode}")
 
   @lru_cache
   def _open_config(self, config_name="config.yaml"):
@@ -169,12 +170,11 @@ class PartitionCommon:
   def check_table_partition(self, table, cur):
     data = self.checker_table(table, cur)
 
-    if "partitioned table" in list(data[0]):
-      return False
-    else:
-      return True
+    partition = bool("partitioned table" not in list(data[0]))
 
-  def _get_config(self):
+    return partition
+
+  def get_config(self):
     if os.environ["ENV"] == "staging":
       configfile = "config.staging.yaml"
     else:
@@ -183,7 +183,7 @@ class PartitionCommon:
 
     return config
 
-  def _get_secret(self):
+  def get_secret(self):
     secret = self._open_secret("secret.yaml")
 
     return secret

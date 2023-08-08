@@ -1,13 +1,13 @@
 # PG Partition
 
-## Current Partitioning only works on existing table and convert it to a Range Partition. 
+## Current Partitioning only works on existing table and convert it to a Range Partition.
 ## To use this Repository, make sure to install all the dependencies from requirements.txt
 ```
 pip install - r requirements.txt
 ```
 
 1. Create an .env file in the directory, either (.env.staging || .env.production)
-Below show all the env options available: 
+Below show all the env options available:
 ```diff
 + REMOTE_HOST can be added if you need to tunneling instead of SSL authentication
 + Include when required
@@ -39,10 +39,10 @@ USERNAME=
 + PASSWORD refer to the password access to the database instance
 PASSWORD=
 
-+ DATABASE refer to the database name that you are connecting to 
++ DATABASE refer to the database name that you are connecting to
 DATABASE=
 
-+ DB_HOST is the host name of the database instance, it can be IPv4 or DNS names 
++ DB_HOST is the host name of the database instance, it can be IPv4 or DNS names
 DB_HOST=
 
 + DB_SSLMODE can be added if you need to use SSL authentication instead of tunneling
@@ -83,7 +83,7 @@ BUCKET_NAME=<S3 bucket name>
 + List of table you want to perform partition on
 table:
 + Dict to fill in column information
- - column: 
+ - column:
 + The format of the column information
     <column name>: <column field for example see below>
 + How long do you want the data to be in your live db (n + 1) in years?
@@ -97,7 +97,7 @@ table:
 + What is the schema of the db ?
   schema: test
 + Is there any additional index ? Will be added automatically if there is any, can be ignored
-  additional_index_name: 
+  additional_index_name:
 + The format of the index information
     <index name>: <index field for example see below>
 ```
@@ -116,7 +116,7 @@ table:
   partition: created_at
   pkey: id
   schema: public
-  additional_index_name: 
+  additional_index_name:
     index_test_type_id: USING  btree (item_type, item_id)
 ```
 
@@ -129,7 +129,7 @@ export LC_ALL='en_US.UTF-8'
 export PYTHONIOENCODING='UTF-8'
 ```
 
-1. Once the export is done, 
+1. Once the export is done,
 ```
 staging python <*.py>
 
@@ -145,7 +145,7 @@ production python <*.py>
   - check_blocker.py - Used to verified that during partitioning, no table are block
 
 ## To do
-- Create a job schedular to check regularly on the max date and if the partition exist, if not then create a partition 
+- Create a job schedular to check regularly on the max date and if the partition exist, if not then create a partition
 
 
 ## Create a daily partition worker to perform partition base on request
