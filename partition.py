@@ -1,3 +1,12 @@
+"""
+    Partition module to perform partitioning in postgres database
+    It utilize asycio background task to perform partitioning
+    with renameing existing table to table_old and create table with partition
+    and attached the table_old to the new table as default partition
+
+    Besides, the module also perform additional index for the primary key and
+    insert as composite key for the partition table
+"""
 import os
 import re
 
@@ -28,13 +37,21 @@ load_dotenv()
 
 
 class Partition(PartitionCommon):
-  def __init__(self) -> None:
-    super().__init__()
+  """
+  Partition class is used to perform partitioning in postgres database
+  The main function is the entry point of the class
+
+  Args:
+    No args needed
+
+  Returns:
+    No returns
+  """
 
   def additional_index_reverse_partitioning(self, index, table):
     application_name = f"{table['schema']}.{table['name']}"
     logger = self.logging_func(application_name=application_name)
-    if re.search(f"\\b{table['pkey']}", index) == None:
+    if re.search(f"\\b{table['pkey']}", index) is None:
       get_idx = index.split("USING")
 
       get_idx_name = get_idx[0].split("ON ")
@@ -49,19 +66,19 @@ class Partition(PartitionCommon):
       if os.environ["ENV"] == "staging":
         configfile = "config.staging.yaml"
 
-      with open(configfile, "r") as yamlfile:
+      with open(configfile, "r", encoding="utf-8") as yamlfile:
         cur_yaml = yaml.load(yamlfile)
 
-        for table in cur_yaml["table"]:
+        for tabs in cur_yaml["table"]:
           if (
-            table["name"] in get_tb_schema[1]
-            and table["schema"] in get_tb_schema[0]
+            tabs["name"] in get_tb_schema[1]
+            and tabs["schema"] in get_tb_schema[0]
           ):
             logger.info("Adding additional index for reverse partitioning")
-            table["additional_index_name"] = {}
-            table["additional_index_name"].update(new_yaml_data_dict)
+            tabs["additional_index_name"] = {}
+            tabs["additional_index_name"].update(new_yaml_data_dict)
 
-      with open(configfile, "w") as yamlfile:
+      with open(configfile, "w", encoding="utf-8") as yamlfile:
         yaml.dump(cur_yaml, yamlfile)
 
   def change_owner_on_index_table(self, table, cur):
@@ -116,7 +133,10 @@ class Partition(PartitionCommon):
         index[0] for index in index_data if table["partition"] in index[0]
       ]
 
-      ## Keeping this as it is a bug from postgres 10 and 11 which partition index wont show in pg_indexes thus required to call from pg_class
+      ## Keeping this as it is a bug
+      ## from postgres 10 and 11
+      ## which partition index wont show
+      ## in pg_indexes thus required to call from pg_class
       check_partition_table_index = f"""
                 select i.relname as indexname
                 from pg_class i
@@ -163,9 +183,9 @@ class Partition(PartitionCommon):
     conn = conn.connect()
     cur = conn.cursor()
     try:
-      set_searchPath = set_search_path.format(a=table["schema"])
-      logger.debug(set_searchPath)
-      cur.execute(set_searchPath)
+      search_path = set_search_path.format(a=table["schema"])
+      logger.debug(search_path)
+      cur.execute(search_path)
 
       index_data = self.get_index_required(table, cur)
 
@@ -178,16 +198,18 @@ class Partition(PartitionCommon):
 
       if partitioning:
         alter_table_partition_key_to_not_null = f"""
-                    ALTER TABLE "{table['schema']}".{table['name']} ALTER COLUMN {table['partition']} SET NOT NULL;
-                """
+          ALTER TABLE "{table['schema']}".{table['name']}
+          ALTER COLUMN {table['partition']}
+          SET NOT NULL;
+        """
         self.logger.debug("Alter table partition column with not null")
         cur.execute(alter_table_partition_key_to_not_null)
 
         alter_old_table_pkey = f"""
-                    ALTER TABLE "{table['schema']}".{table['name']}
-                    DROP CONSTRAINT {table['name']}_pkey,
-                    ADD PRIMARY KEY ({table['pkey']}, {table['partition']})
-                """
+          ALTER TABLE "{table['schema']}".{table['name']}
+          DROP CONSTRAINT {table['name']}_pkey,
+          ADD PRIMARY KEY ({table['pkey']}, {table['partition']})
+        """
 
         self.logger.debug("Added table primary key with partition column")
         cur.execute(alter_old_table_pkey)
@@ -205,7 +227,11 @@ class Partition(PartitionCommon):
           cur.execute(alter_idx)
 
           if idx_name == f"{table['name']}_pkey":
-            partition_table_idx = f"CREATE UNIQUE INDEX {table['name']}_pkey ON ONLY {table['name']} USING btree ({table['pkey']}, {table['partition']});"
+            partition_table_idx = f"""
+              CREATE UNIQUE INDEX {table['name']}_pkey
+              ON ONLY {table['name']}
+              USING btree ({table['pkey']}, {table['partition']});
+            """
           else:
             partition_table_idx = f"{idx_query}".replace("ON", "ON ONLY")
 
@@ -221,9 +247,8 @@ class Partition(PartitionCommon):
         new_conn.autocommit = True
         new_cur = new_conn.cursor()
 
-        set_searchPath = set_search_path.format(a=table["schema"])
-        logger.debug(set_searchPath)
-        new_cur.execute(set_searchPath)
+        logger.debug(search_path)
+        new_cur.execute(search_path)
 
         new_idx_name = (
           f'{table["name"]}_old_{table["pkey"]}_{table["partition"]}_idx'
@@ -233,21 +258,31 @@ class Partition(PartitionCommon):
           f"Creating new unique index concurrently for {new_idx_name}"
         )
         new_cur.execute(
-          f'CREATE UNIQUE INDEX CONCURRENTLY {new_idx_name} ON {table["name"]}_old USING btree ({table["pkey"]}, {table["partition"]});'
+          f"""
+            CREATE UNIQUE INDEX CONCURRENTLY {new_idx_name}
+            ON {table["name"]}_old
+            USING btree ({table["pkey"]}, {table["partition"]});
+          """
         )
 
         logger.debug(
-          f"Attaching index {new_idx_name} to partition index {table['name']}_pkey"
+          f"""
+            Attaching index {new_idx_name} to
+            partition index {table['name']}_pkey
+          """
         )
         new_cur.execute(
-          f"ALTER INDEX {table['name']}_pkey ATTACH PARTITION {new_idx_name};"
+          f"""
+            ALTER INDEX {table['name']}_pkey
+            ATTACH PARTITION {new_idx_name};
+          """
         )
 
         if "additional_index_name" in table:
-          idxColList = []
+          idx_col_list = []
           for idx_col in list(table["additional_index_name"].keys()):
             d = re.findall(
-              "(?<=\().+?(?=\))", table["additional_index_name"][idx_col]
+              r"(?<=\().+?(?=\))", table["additional_index_name"][idx_col]
             )
 
             d = d[0]
@@ -266,28 +301,45 @@ class Partition(PartitionCommon):
             logger.debug(
               f"Creating new index concurrently for {addon_new_idx_name}"
             )
-            newval = f"CREATE INDEX CONCURRENTLY {addon_new_idx_name} ON {table['name']}_old {table['additional_index_name'][idx_col]};"
+            newval = f"""
+              CREATE INDEX CONCURRENTLY {addon_new_idx_name}
+              ON {table['name']}_old
+              {table['additional_index_name'][idx_col]};
+            """
 
             logger.debug(
-              f"Attaching index {addon_new_idx_name} to partition index {idx_col}"
+              f"""
+                Attaching index {
+                  addon_new_idx_name
+                } to partition index {
+                  idx_col
+                }
+              """
             )
             newalter = (
               f"ALTER INDEX {idx_col} ATTACH PARTITION {addon_new_idx_name};"
             )
 
-            idxColList.append(newval)
-            idxColList.append(newalter)
+            idx_col_list.append(newval)
+            idx_col_list.append(newalter)
 
-          for idx in idxColList:
+          for idx in idx_col_list:
             new_cur.execute(idx)
         new_conn.close()
       else:
         logger.info(
-          f"No partitioning needed, as table already partition: {table['schema']}.{table['name']}"
+          f"""
+            No partitioning needed, as table already partition: {
+              table['schema']
+            }.{
+              table['name']
+            }
+          """
         )
         conn.close()
-      if type(server) == SSHTunnelForwarder:
+      if isinstance(server, SSHTunnelForwarder):
         server.stop()
+    # pylint: disable=broad-except
     except Exception as e:
       logger.error(e)
       logger.error("Error occured while partitioning, rolling back")
@@ -295,7 +347,7 @@ class Partition(PartitionCommon):
       conn.close()
 
   @get_config_n_secret
-  def main(self, table, database_config, application_name):
+  def main(self, table=None, database_config=None, application_name=None):
     self.perform_partitioning(table, database_config, application_name)
 
 
