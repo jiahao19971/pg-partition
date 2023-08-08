@@ -1,0 +1,51 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v2.3.0
+    hooks:
+    - id: check-yaml
+    - id: end-of-file-fixer
+    - id: trailing-whitespace
+  - repo: https://github.com/asottile/seed-isort-config
+    rev: v1.9.3
+    hooks:
+    - id: seed-isort-config
+  - repo: https://github.com/pycqa/isort
+    rev: 5.5.4
+    hooks:
+      - id: isort
+        args: ["--profile", "black", --indent, "'  '"]
+  - repo: local
+    hooks:
+      - id: cblack
+        name: cblack
+        entry: cblack
+        language: python
+        language_version: python3
+        exclude: >
+            (?x)^(
+                .pre-commit-config.yaml|
+                .pylintrc|
+                .isort.cfg|
+                .coverage|
+                requirements.txt|
+                README.md|
+                docker-compose.yaml|
+                Dockerfile|
+                .dockerignore|
+                secret.json|
+                config.json|
+                time.json|
+                expected.weekend.json|
+                expected.json|
+                \*.png|
+                .gitignore|
+                .github/workflows/pipeline.yml
+            )$
+
+
+        args: [--line-length=80]
+  - repo: https://github.com/pre-commit/mirrors-pylint
+    rev: v3.0.0a5
+    hooks:
+      - id: pylint
+        args: [--disable=unused-argument, --enable=unused-import, --rcfile=.pylintrc]
