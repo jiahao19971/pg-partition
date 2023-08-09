@@ -23,26 +23,20 @@ repos:
         language_version: python3
         exclude: >
             (?x)^(
-                .pre-commit-config.yaml|
-                .pylintrc|
-                .isort.cfg|
-                .coverage|
-                requirements.txt|
-                README.md|
-                Readme.md|
-                \**docker-compose.yaml|
-                database/docker-compose.yaml|
-                lambda/get_chunked_data.zip|
-                Dockerfile|
-                .dockerignore|
-                secret.json|
-                config.json|
-                time.json|
-                expected.weekend.json|
-                expected.json|
-                \*.png|
-                .gitignore|
-                .github/workflows/image_build.yaml
+                .pre-commit-config.yaml
+                |.pylintrc
+                |.isort.cfg
+                |requirements.txt
+                |README.md
+                |Readme.md
+                |docker-compose.yaml
+                |database/docker-compose.yaml
+                |lambda/get_chunked_data.zip
+                |Dockerfile
+                |.dockerignore
+                |(.*).json
+                |.gitignore
+                |.github/workflows/(.*).yaml
             )$
 
 
