@@ -16,6 +16,17 @@ pre-commit autoupdate
 pre-commit install
 ```
 
+Example Output when you `git commit`
+```
+check yaml...........................................(no files to check)Skipped
+fix end of files.....................................(no files to check)Skipped
+trim trailing whitespace.............................(no files to check)Skipped
+seed isort known_third_party.............................................Passed
+isort................................................(no files to check)Skipped
+cblack...............................................(no files to check)Skipped
+pylint...............................................(no files to check)Skipped
+```
+
 
 ---
 
