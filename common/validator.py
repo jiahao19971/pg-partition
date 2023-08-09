@@ -9,6 +9,10 @@
     When remote_host is there,
       only remote_key or remote_password
       should exist
+
+    When db_host is there,
+      either db_ssl or db_password
+      should exist
 """
 
 from cerberus import Validator, errors
@@ -47,3 +51,7 @@ class PartitioningValidator(Validator):
       ):
         self._error("remote_key", FILED_EXIST_ERROR)
         self._error("remote_password", FILED_EXIST_ERROR)
+    elif field == "db_host" and value:
+      if "db_ssl" not in self.document and "db_password" not in self.document:
+        self._error("db_ssl", FILED_EXIST_ERROR)
+        self._error("db_password", FILED_EXIST_ERROR)

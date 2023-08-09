@@ -64,7 +64,7 @@ class Partition(PartitionCommon):
 
       new_yaml_data_dict = {idx_name: f"USING {(get_idx[1])}"}
       configfile = "config.yaml"
-      if os.environ["ENV"] == "staging":
+      if "ENV" in os.environ and os.environ["ENV"] == "staging":
         configfile = "config.staging.yaml"
 
       with open(configfile, "r", encoding="utf-8") as yamlfile:

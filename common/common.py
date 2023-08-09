@@ -175,7 +175,7 @@ class PartitionCommon:
     return partition
 
   def get_config(self):
-    if os.environ["ENV"] == "staging":
+    if "ENV" in os.environ and os.environ["ENV"] == "staging":
       configfile = "config.staging.yaml"
     else:
       configfile = "config.yaml"

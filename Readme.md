@@ -1,74 +1,24 @@
 # PG Partition
+#### Current Partitioning only works on existing table and convert it to a Range Partition.
 
-## Current Partitioning only works on existing table and convert it to a Range Partition.
-## To use this Repository, make sure to install all the dependencies from requirements.txt
+#### To use this Repository, make sure to install all the dependencies from requirements.txt
 ```
 pip install - r requirements.txt
 ```
 
-1. Create an .env file in the directory, either (.env.staging || .env.production)
+## 1. Create an .env file in the directory
 Below show all the env options available:
 ```diff
-+ REMOTE_HOST can be added if you need to tunneling instead of SSL authentication
-+ Include when required
-#REMOTE_HOST=<Host name for Tunnelling>
++ ENV can be added to set the environment
++ Params available is staging
++ Change naming for config.yaml to config.staging.yaml
+ENV=staging
 
-+ REMOTE_PORT can be added if you need to tunneling instead of SSL authentication
-+ Include when required
-#REMOTE_PORT=<Port number for Tunnelling>
-
-+ REMOTE_USERNAME can be added if you need to tunneling instead of SSL authentication
-+ Include when required
-#REMOTE_USERNAME=<Username for Tunnelling>
-
-+ REMOTE_KEY can be added if you need to tunneling instead of SSL authentication
-+ Include when required
-+ If REMOTE_PASSWORD is used, please removed REMOTE_KEY
-#REMOTE_KEY=<Root Key access for Tunnelling>
-
-+ REMOTE_HOST can be added if you need to tunneling instead of SSL authentication
-+ Include when required
-+ If REMOTE_KEY is used, please removed REMOTE_PASSWORD
-#REMOTE_PASSWORD=<Password for Tunnelling>
-
-+ USERNAME refer to the username access to the database instance
-+ If AWS is used, IAM user name can be insert here
-+ Else Normal User to access to the database (postgres)
-USERNAME=
-
-+ PASSWORD refer to the password access to the database instance
-PASSWORD=
-
-+ DATABASE refer to the database name that you are connecting to
-DATABASE=
-
-+ DB_HOST is the host name of the database instance, it can be IPv4 or DNS names
-DB_HOST=
-
-+ DB_SSLMODE can be added if you need to use SSL authentication instead of tunneling
-+ Include when required
-# DB_SSLMODE=<SSL MODE IF required, include only if required>
-
-+ DB_SSLROOTCERT can be added if you need to use SSL authentication instead of tunneling
-+ Include when required
-# DB_SSLROOTCERT=<ROOT CA location>
-
-+ DB_SSLCERT can be added if you need to use SSL authentication instead of tunneling
-+ Include when required
-# DB_SSLCERT=<SSL Cert Location>
-
-+ DB_SSLKEY can be added if you need to use SSL authentication instead of tunneling
-+ Include when required
-# DB_SSLKEY=<SSL Key Location>
-
-+ AWS_ACCESS_KEY can be added if you want to run migrate.py
-AWS_ACCESS_KEY=<AWS Access Key with access to s3 bucket mentioned>
-
-+ AWS_SECRET_ACCESS_KEY can be added if you want to run migrate.py
-AWS_SECRET_ACCESS_KEY=<AWS Secret Key with access to s3 bucket mentioned>
-
-+ BUCKET_NAME can be added if you want to run migrate.py
-BUCKET_NAME=<S3 bucket name>
++ DEPLOYMENT can be added to set migration.py run
++ Params available is kubernetes
++ Run check base on min_date of the table instead
++ of the event u put in
+DEPLOYMENT=kubernetes
 
 + LOGLEVEL can be added if you want to reduce the amount of logs
 + Params available is DEBUG | INFO | WARNING | ERROR
@@ -76,8 +26,8 @@ BUCKET_NAME=<S3 bucket name>
 # LOGLEVEL=DEBUG
 ```
 
-2. Once we have the .env ready, we will need to create a `config.yaml`
-- The main purpose of the config.yaml is to allow the script to known what table, and variables to perform the partitioning on
+## 2. Once we have the `.env` ready, we will need to create a `config.yaml`
+- The main purpose of the `config.yaml` is to allow the script to known what table, and variables to perform the partitioning on
 
 ```diff
 + List of table you want to perform partition on
@@ -102,7 +52,7 @@ table:
     <index name>: <index field for example see below>
 ```
 
-Finalize example: `config.yaml`
+### Finalize example: `config.yaml`
 ```
 table:
 - column:
@@ -120,32 +70,114 @@ table:
     index_test_type_id: USING  btree (item_type, item_id)
 ```
 
-
-1. To run the script, run these export first:
+## 3. Create a `secret.yaml`
+- The main purpose of the `secret.yaml` is to allow the script have the required credentials to perform the partitioning
 ```
-export PATH=$PATH:./bin
-export LANG='en_US.UTF-8'
-export LC_ALL='en_US.UTF-8'
-export PYTHONIOENCODING='UTF-8'
+database:
+  - db_identifier: <database instance name (aws rds: follow the identifier name)>
+    db_host: <database host>
+    db_name: <database name>
+    db_username: <database user>
+    db_port: <database port in str> (optional)
+    db_password: <database password> (optional, required if db_ssl does not exist)
+    remote_host: <tunnel host> (optional)
+    remote_port: <tunnel port in str> (optional)
+    remote_username: <tunnel username> (optional)
+    remote_key: <tunnel public key> (optional, required if remote_password does not exist)
+    remote_password: <tunnel password> (optional, required if remote key does not exist)
+    db_ssl: (optional, required if db_password does not exist)
+      db_sslmode: <database ssl mode> (required)
+      db_sslrootcert: <database root certificate> (optional)
+      db_sslcert: <database certificate> (optional)
+      db_sslkey: <database ssl key> (optional)
+    aws: (optional, required for migrate.py only)
+      region: <which aws region is it ?> (optional)
+      bucket_name: <s3 bucket name to upload the data to > (required)
+      lambda_arn: <arn for lambda> (required)
+      lambda_aws_access_key: arn:aws:lambda:{region}:{account_id}:function:{lambda name} (not give, used aws_access_key)
+      lambda_aws_secret_access_key: <aws user access for lambda> (not give, used aws_secret_access_key)
+      aws_access_key: <aws user access for postgres/s3 bucket> (required)
+      aws_secret_access_key: <aws user secret access for postgres/s3 bucket> (required)
 ```
 
-1. Once the export is done,
+### Finalize example: `secret.yaml`
+#### Local using Database Password
 ```
-staging python <*.py>
-
-production python <*.py>
+database:
+  - db_identifier: example.com
+    db_host: 0.0.0.0
+    db_name: postgres
+    db_username: postgres
+    db_password: example.com
+```
+#### With Remote Host using Public Key
+```
+database:
+  - db_identifier: example.com
+    db_host: 0.0.0.0
+    db_name: postgres
+    db_username: postgres
+    db_password: example.com
+    remote_host: 192.168.1.1
+    remote_port: "22"
+    remote_username: ubuntu
+    remote_key: example.pem
 ```
 
-5. There are 3 main scripts to run
+#### With AWS Cred
+```
+database:
+  - db_identifier: example.com
+    db_host: 0.0.0.0
+    db_name: postgres
+    db_username: postgres
+    db_password: example.com
+    remote_host: 192.168.1.1
+    remote_port: "22"
+    remote_username: ubuntu
+    remote_key: example.pem
+    aws:
+      region: ap-southeast-1
+      bucket_name: examplebucket
+      lambda_arn: arn:aws:lambda:ap-southeast-1:123:function:example
+      lambda_aws_access_key: example1
+      lambda_aws_secret_access_key: test456
+      aws_access_key: example
+      aws_secret_access_key: test123
+```
+
+#### With AWS Cred and Database SSL
+```
+database:
+  - db_identifier: example.com
+    db_host: 0.0.0.0
+    db_name: postgres
+    db_username: postgres
+    db_password: example.com
+    remote_host: 192.168.1.1
+    remote_port: "22"
+    remote_username: ubuntu
+    remote_key: example.pem
+    db_ssl:
+      db_sslmode: verify-full
+      db_sslrootcert: example.pem
+      db_sslcert: example-x509.pem
+      db_sslkey: test.key
+    aws:
+      region: ap-southeast-1
+      bucket_name: examplebucket
+      lambda_arn: arn:aws:lambda:ap-southeast-1:123:function:example
+      lambda_aws_access_key: example1
+      lambda_aws_secret_access_key: test456
+      aws_access_key: example
+      aws_secret_access_key: test123
+```
+___
+1. There are 3 main scripts to run
   - partition.py - Used to perform partitioning
+  - yearly_partition.py - Used to perform partitioning based on the year provided
   - migrate.py - Used to perform migration of partition data from db to s3 bucket and remove the partition
   - reverse_partition.py - Used to reverse the partitioning
 
-6. Other script to be used:
+2. Other script to be used:
   - check_blocker.py - Used to verified that during partitioning, no table are block
-
-## To do
-- Create a job schedular to check regularly on the max date and if the partition exist, if not then create a partition
-
-
-## Create a daily partition worker to perform partition base on request
