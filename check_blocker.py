@@ -8,7 +8,6 @@ import time
 from dotenv import load_dotenv
 
 from common.common import PartitionCommon
-from common.query import get_blocking_query
 from common.wrapper import get_config_n_secret
 from db.db import get_db
 from tunnel.tunnel import get_tunnel
@@ -42,7 +41,7 @@ class CheckBlocker(PartitionCommon):
 
     while True:
       cur = conn.cursor()
-      cur.execute(get_blocking_query)
+      cur.execute(self.get_blocking_query)
       blocker = cur.fetchall()
       print(blocker)
       conn.commit()

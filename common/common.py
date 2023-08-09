@@ -6,7 +6,6 @@
     required for the partitioning process
 """
 import json
-import logging
 import os
 import sys
 from functools import lru_cache
@@ -14,21 +13,15 @@ from functools import lru_cache
 from cerberus import Validator
 from ruamel.yaml import YAML, YAMLError
 
-from common.common_enum import DEBUGGER
-from common.query import table_check
+from common.query import PartitionQuery
 from common.validator import PartitioningValidator
 
 yaml = YAML()
 
 yaml.preserve_quotes = True
 
-logging.basicConfig(
-  format="%(asctime)s - %(levelname)s: %(name)s @ %(message)s",
-  datefmt="%Y-%m-%d %H:%M:%S",
-)
 
-
-class PartitionCommon:
+class PartitionCommon(PartitionQuery):
   """
   PartitionCommon class is used to
   main class to specify the common function
@@ -46,37 +39,8 @@ class PartitionCommon:
     "switching back to default value: %s"
   )
 
-  def __init__(self) -> None:
-    self.logger = self.logging_func("PG_Partition")
-
-  def _check_logger(self) -> str:
-    try:
-      logger = DEBUGGER(os.environ["LOGLEVEL"])
-      self.logger.info("Environment variable LOGLEVEL was found")
-      return logger.value
-    except ValueError as e:
-      self.logger.error(e)
-      raise e
-    except KeyError:
-      self.logger.warning(self.env_string, "LOGLEVEL", DEBUGGER.DEBUG.value)
-      return DEBUGGER.DEBUG.value
-
-  def _evaluate_logger(self, logs):
-    if logs == DEBUGGER.ERROR.value:
-      return logging.ERROR
-    elif logs == DEBUGGER.INFO.value:
-      return logging.INFO
-    elif logs == DEBUGGER.WARNING.value:
-      return logging.WARNING
-    else:
-      return logging.DEBUG
-
-  def logging_func(self, application_name="PG_Partition"):
-    logger = logging.getLogger(application_name)
-    return logger
-
   def reverse_check_table_partition(self, table, cur):
-    checker = table_check.format(a=table["name"], b=table["schema"])
+    checker = self.table_check.format(a=table["name"], b=table["schema"])
     cur.execute(checker)
     data = cur.fetchall()
 
@@ -157,7 +121,7 @@ class PartitionCommon:
   def checker_table(self, table, cur):
     application_name = f"{table['schema']}.{table['name']}"
     logger = self.logging_func(application_name=application_name)
-    checker = table_check.format(a=table["name"], b=table["schema"])
+    checker = self.table_check.format(a=table["name"], b=table["schema"])
 
     logger.info(
       f"Checking table if it is partition: {table['schema']}.{table['name']}"

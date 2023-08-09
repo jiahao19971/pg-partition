@@ -8,24 +8,6 @@ from psycopg2 import Error
 from sshtunnel import BaseSSHTunnelForwarderError, SSHTunnelForwarder
 
 from common.common import PartitionCommon
-from common.query import (
-  alter_index_rename,
-  alter_sequence_owned_by,
-  alter_sequence_owner,
-  alter_table_owner,
-  alter_table_set_default_val,
-  analyze_table,
-  create_normal_index,
-  create_normal_table,
-  create_sequece_if_not_exists,
-  drop_table_cascade,
-  get_sequence_like_value,
-  insert_data_to_table,
-  rename_table,
-  set_search_path,
-  set_sequence_last_val,
-  table_check_like,
-)
 from common.wrapper import get_config_n_secret
 from db.db import get_db
 from tunnel.tunnel import get_tunnel
@@ -46,7 +28,7 @@ class ReversePartition(PartitionCommon):
   """
 
   def check_combine_table(self, table, cur):
-    checker = table_check_like.format(
+    checker = self.table_check_like.format(
       a=rf'{table["name"]}\_%', b=table["schema"]
     )
     cur.execute(checker)
@@ -70,7 +52,7 @@ class ReversePartition(PartitionCommon):
       logger.debug(f"Connected: {db_identifier}")
       cur = conn.cursor()
 
-      qry = set_search_path.format(a=table["schema"])
+      qry = self.set_search_path.format(a=table["schema"])
       logger.info(qry)
       cur.execute(f"{qry};")
 
@@ -93,7 +75,7 @@ class ReversePartition(PartitionCommon):
 
         table_combine = self.check_combine_table(table, cur)
 
-        create_table = create_normal_table.format(
+        create_table = self.create_normal_table.format(
           a=f"{table['name']}_new",
           b=", ".join(collist),
           c=table["pkey"],
@@ -103,7 +85,7 @@ class ReversePartition(PartitionCommon):
 
         for tab in table_combine:
           logger.info(f"Moving data from {tab} to {table['name']}_new")
-          insertation = insert_data_to_table.format(
+          insertation = self.insert_data_to_table.format(
             a=f"{table['name']}_new",
             b=",".join(colname),
             c=tab,
@@ -112,7 +94,7 @@ class ReversePartition(PartitionCommon):
           cur.execute(insertation)
 
         if len(table_combine) > 0:
-          get_sequence = get_sequence_like_value.format(
+          get_sequence = self.get_sequence_like_value.format(
             a=table["name"],
             b=table["schema"],
           )
@@ -121,17 +103,17 @@ class ReversePartition(PartitionCommon):
 
           seq = cur.fetchall()
 
-          drop_partitioning = drop_table_cascade.format(a=table["name"])
+          drop_partitioning = self.drop_table_cascade.format(a=table["name"])
 
-          alter_name = rename_table.format(
+          alter_name = self.rename_table.format(
             a=f"{table['name']}_new", b=table["name"]
           )
 
-          alter_idx = alter_index_rename.format(
+          alter_idx = self.alter_index_rename.format(
             a=f"{table['name']}_new_pkey", b=f"{table['name']}_pkey"
           )
 
-          run_analyze = analyze_table.format(a=table["name"])
+          run_analyze = self.analyze_table.format(a=table["name"])
 
           cur.execute(drop_partitioning)
           logger.debug("Rename table to original table name")
@@ -144,7 +126,7 @@ class ReversePartition(PartitionCommon):
           if "additional_index_name" in table:
             idx_col_list = []
             for idx_col in list(table["additional_index_name"].keys()):
-              newval = create_normal_index.format(
+              newval = self.create_normal_index.format(
                 a=idx_col,
                 b=table["name"],
                 c=table["additional_index_name"][idx_col],
@@ -156,27 +138,27 @@ class ReversePartition(PartitionCommon):
               cur.execute(idx)
 
           for sequence in seq:
-            create_sequence = create_sequece_if_not_exists.format(
+            create_sequence = self.create_sequece_if_not_exists.format(
               a=table["schema"], b=sequence[0], c=sequence[1], d=sequence[2]
             )
 
-            update_sequence = set_sequence_last_val.format(
+            update_sequence = self.set_sequence_last_val.format(
               a=table["schema"], b=sequence[0], c=sequence[3]
             )
 
-            change_owner = alter_table_owner.format(
+            change_owner = self.alter_table_owner.format(
               a=f'"{table["schema"]}".{table["name"]}'
             )
 
-            change_sequence_owner = alter_sequence_owner.format(
+            change_sequence_owner = self.alter_sequence_owner.format(
               a=f'"{table["schema"]}".{sequence[0]}'
             )
 
-            add_sequence_back = alter_table_set_default_val.format(
+            add_sequence_back = self.alter_table_set_default_val.format(
               a=table["schema"], b=table["name"], c=table["pkey"], d=sequence[0]
             )
 
-            change_sequence_ownership = alter_sequence_owned_by.format(
+            change_sequence_ownership = self.alter_sequence_owned_by.format(
               a=f'"{table["schema"]}".{sequence[0]}',
               b=f"{table['name']}.{table['pkey']}",
             )

@@ -18,14 +18,6 @@ from psycopg2 import Error
 from sshtunnel import BaseSSHTunnelForwarderError, SSHTunnelForwarder
 
 from common.common import PartitionCommon
-from common.query import (
-  aws_migrate_data,
-  count_table_from_db,
-  create_aws_s3_extension,
-  drop_table,
-  get_order_by_limit_1,
-  table_check,
-)
 from common.wrapper import get_config_n_secret
 from db.db import get_db
 from tunnel.tunnel import get_tunnel
@@ -119,15 +111,6 @@ class MigratePartition(PartitionCommon):
         raise e
     else:
       raise ValueError("AWS credentials not found")
-
-  def check_table_partition(self, table, cur):
-    checker = table_check.format(a=table["name"], b=table["schema"])
-    cur.execute(checker)
-    data = cur.fetchall()
-
-    partition = bool("partitioned table" in list(data[0]))
-
-    return partition
 
   def get_count_from_s3(self, path, database_config):
     self.logger.debug(f"Getting count for path: {path}")
@@ -253,7 +236,7 @@ class MigratePartition(PartitionCommon):
       partitioning = self.check_table_partition(table, cur)
 
       if partitioning:
-        cur.execute(create_aws_s3_extension)
+        cur.execute(self.create_aws_s3_extension)
 
         today = datetime.date.today()
 
@@ -261,7 +244,7 @@ class MigratePartition(PartitionCommon):
 
         archive_year = current_year - table["interval"] - 1
 
-        minimum_year = get_order_by_limit_1.format(
+        minimum_year = self.get_order_by_limit_1.format(
           a=table["partition"], b=table["name"], c=table["pkey"], d="ASC"
         )
 
@@ -279,7 +262,7 @@ class MigratePartition(PartitionCommon):
             new_year = min_year + looper_year
 
             logger.debug("Counting the amount of rows the table have")
-            counting_table = count_table_from_db.format(
+            counting_table = self.count_table_from_db.format(
               a=f"{table['name']}_{new_year}"
             )
 
@@ -304,7 +287,7 @@ class MigratePartition(PartitionCommon):
               f"Migrating data from table {new_year} to s3 {self.bucket_name}"
             )
 
-            migrate_data = aws_migrate_data.format(
+            migrate_data = self.aws_migrate_data.format(
               a=table["schema"],
               b=f'{table["name"]}_{new_year}',
               c=self.bucket_name,
@@ -330,7 +313,7 @@ class MigratePartition(PartitionCommon):
               if int(count_table[0][0]) == int(count_tb):
                 logger.info(f"Data migrated check successfully {new_year}")
 
-                drop_partition_table = drop_table.format(
+                drop_partition_table = self.drop_table.format(
                   a=table["schema"], b=f'{table["name"]}_{new_year}'
                 )
 

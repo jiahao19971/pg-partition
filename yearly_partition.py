@@ -31,17 +31,6 @@ from psycopg2 import Error
 from sshtunnel import BaseSSHTunnelForwarderError, SSHTunnelForwarder
 
 from common.common import PartitionCommon
-from common.query import (
-  alter_table_constraint,
-  alter_table_owner,
-  attach_table_as_default_partition,
-  create_partition_of_table,
-  detach_partition,
-  get_min_table,
-  get_table_existence,
-  move_rows_to_another_table,
-  set_search_path,
-)
 from common.wrapper import background, get_config_n_secret
 from db.db import get_db
 from tunnel.tunnel import get_tunnel
@@ -64,23 +53,25 @@ class YearlyPartition(PartitionCommon):
   ):
     if colname is None:
       raise ValueError("Column name is not provided")
-    detach_old_partition = detach_partition.format(a=table["name"], b="old")
-    create_table = create_partition_of_table.format(
+    detach_old_partition = self.detach_partition.format(
+      a=table["name"], b="old"
+    )
+    create_table = self.create_partition_of_table.format(
       a=table["name"], b=year, c=year + 1
     )
-    change_table_owner = alter_table_owner.format(a=table_name)
-    add_constraint_table = alter_table_constraint.format(
+    change_table_owner = self.alter_table_owner.format(a=table_name)
+    add_constraint_table = self.alter_table_constraint.format(
       a=table["name"], b=year, c=table["partition"], d=year, e=year + 1
     )
-    move_lines = move_rows_to_another_table.format(
+    move_lines = self.move_rows_to_another_table.format(
       a=table["name"],
-      b="olds",
+      b="old",
       c=table["partition"],
       d=year,
       e=year + 1,
       f=",".join(colname),
     )
-    attach_as_default = attach_table_as_default_partition.format(
+    attach_as_default = self.attach_table_as_default_partition.format(
       a=table["name"], b=f"{table['name']}_old"
     )
 
@@ -96,6 +87,22 @@ class YearlyPartition(PartitionCommon):
     cur.execute(move_lines)
     logger.debug("Attach table as default partition")
     cur.execute(attach_as_default)
+
+  def run_partition(self, logger, cur, table, table_name, year, colname):
+    check_information_schema = self.get_table_existence.format(
+      a=table["schema"], b=table_name
+    )
+    logger.debug(check_information_schema)
+    cur.execute(check_information_schema)
+
+    data = cur.fetchall()
+
+    if data[0][0] == 1:
+      logger.error(f"Table {table_name} already exist")
+    else:
+      self.perform_split_partition(
+        logger, table, year, cur, table_name, colname
+      )
 
   @background
   def yearly_partition(self, table, database_config, application_name, event):
@@ -121,7 +128,7 @@ class YearlyPartition(PartitionCommon):
       if partitioning is False:
         table_name = f"{table['name']}_{year}"
 
-        search_path = set_search_path.format(a=table["schema"])
+        search_path = self.set_search_path.format(a=table["schema"])
         logger.debug(search_path)
         cur.execute(search_path)
 
@@ -129,35 +136,28 @@ class YearlyPartition(PartitionCommon):
           "DEPLOYMENT" in os.environ
           and os.environ["DEPLOYMENT"] == "kubernetes"
         ):
-          min_table = get_min_table.format(
+          min_table = self.get_min_table.format(
             a=table["partition"], b=f"{table['name']}_old"
           )
           logger.debug(min_table)
           cur.execute(min_table)
           min_date = cur.fetchall()
 
-          min_check_date = min_date[0][0].year
+          if min_date[0][0] is None:
+            self.run_partition(logger, cur, table, table_name, year, colname)
+          else:
+            min_check_date = min_date[0][0].year
 
-          year = min_check_date
-          table_name = f"{table['name']}_{year}"
+            year = min_check_date
+            table_name = f"{table['name']}_{year}"
 
-          self.perform_split_partition(
-            logger, table, year, cur, table_name, colname
-          )
+            self.perform_split_partition(
+              logger, table, year, cur, table_name, colname
+            )
         else:
           logger.debug("Skipping min migration checked")
-          check_information_schema = get_table_existence.format(
-            a=table["schema"], b=table_name
-          )
-          logger.debug(check_information_schema)
-          cur.execute(check_information_schema)
+          self.run_partition(logger, cur, table, table_name, year, colname)
 
-          data = cur.fetchall()
-
-          if data[0][0] == 1:
-            logger.error(f"Table {table_name} already exist")
-          else:
-            self.perform_split_partition(table, year, cur, table_name, colname)
         conn.commit()
       else:
         logger.info(
