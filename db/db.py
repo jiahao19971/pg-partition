@@ -52,8 +52,6 @@ class DBLoader(PartitionCommon):
   ):
     super().__init__()
     self.logger = self.logging_func(f"DB_{database}")
-    logs = self._check_logger()
-    self.logger.setLevel(self._evaluate_logger(logs))
     self.logger.info(f"Database Initialize: {database}")
 
     if isinstance(server, SSHTunnelForwarder):

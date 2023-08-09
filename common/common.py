@@ -34,11 +34,6 @@ class PartitionCommon(PartitionQuery):
     No returns
   """
 
-  env_string = (
-    "Environment variable %s was not found/have issue, "
-    "switching back to default value: %s"
-  )
-
   def reverse_check_table_partition(self, table, cur):
     checker = self.table_check.format(a=table["name"], b=table["schema"])
     cur.execute(checker)

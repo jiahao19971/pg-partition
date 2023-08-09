@@ -10,6 +10,7 @@ from common.common_enum import DEBUGGER
 logging.basicConfig(
   format="%(asctime)s - %(levelname)s: %(name)s @ %(message)s",
   datefmt="%Y-%m-%d %H:%M:%S",
+  level=logging.WARNING,
 )
 
 
@@ -25,6 +26,11 @@ class PartitionQuery:
   Returns:
     No returns
   """
+
+  env_string = (
+    "Environment variable %s was not found/have issue, "
+    "switching back to default value: %s"
+  )
 
   ## Create
   create_normal_table = """
@@ -262,6 +268,7 @@ class PartitionQuery:
   analyze_table = "ANALYZE {a};"
 
   def __init__(self) -> None:
+    self.logger = logging.getLogger("PG_Partition")
     self.logger = self.logging_func("PG_Partition")
 
   def _check_logger(self) -> str:
@@ -287,5 +294,8 @@ class PartitionQuery:
       return logging.DEBUG
 
   def logging_func(self, application_name="PG_Partition"):
-    logger = logging.getLogger("PG_Partition")
+    logger = logging.getLogger(application_name)
+    logs = self._check_logger()
+    logger.setLevel(self._evaluate_logger(logs))
+
     return logger

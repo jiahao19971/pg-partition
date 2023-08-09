@@ -24,27 +24,28 @@ class CheckBlocker(PartitionCommon):
     No args needed
 
   Returns:
-    [dict]: [blocked query]
+    [list]: [blocked query]
   """
 
   @get_config_n_secret
   def main(self, table=None, database_config=None, application_name=None):
     db_identifier = database_config["db_identifier"]
-    logger = self.logging_func(application_name=application_name)
+    self.logger = self.logging_func(application_name=application_name)
 
     server = get_tunnel(database_config)
     conn = get_db(server, database_config, application_name)
 
     conn = conn.connect()
-    logger.debug(f"Connected: {db_identifier}")
+    self.logger.debug(f"Connected: {db_identifier}")
     cur = conn.cursor()
 
     while True:
       cur = conn.cursor()
       cur.execute(self.get_blocking_query)
       blocker = cur.fetchall()
-      print(blocker)
+      self.logger.debug(blocker)
       conn.commit()
+      self.logger.debug("Sleeping for 60 seconds")
       time.sleep(60)
 
 
