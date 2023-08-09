@@ -4,6 +4,11 @@
 """
 
 ## Create
+create_normal_table = """
+  CREATE TABLE {a} ({b},
+    primary key ({c})
+  )
+"""
 
 create_table_with_partitioning = (
   "CREATE TABLE {a} ({b}) PARTITION BY RANGE ({c});"
@@ -15,13 +20,40 @@ create_partition_of_table = """
   FROM ('{b}-01-01 00:00:00') TO ('{c}-01-01 00:00:00');
 """
 
-create_default_table_for_partition = (
-  "CREATE TABLE {a}_default PARTITION OF {a} DEFAULT;"
-)
+create_aws_s3_extension = "CREATE EXTENSION IF NOT EXISTS aws_s3 CASCADE;"
 
-create_index = "CREATE INDEX idx_{a}_{b} ON {a}_{b} ({c});"
+create_unique_index = """
+  CREATE UNIQUE INDEX {a}
+  ON ONLY {b}
+  USING btree ({c}, {d});
+"""
 
-create_unique_index = "CREATE UNIQUE INDEX {a} ON {b} ({c}, {d});"
+create_unique_index_concurrently = """
+  CREATE UNIQUE INDEX CONCURRENTLY {a}
+  ON {b}
+  USING btree ({c}, {d});
+"""
+
+create_index_concurrently = """
+  CREATE INDEX CONCURRENTLY {a}
+  ON {b}
+  {c};
+"""
+
+create_normal_index = """
+  CREATE INDEX {a}
+  ON {b} {c};
+"""
+
+create_sequece_if_not_exists = """
+  CREATE SEQUENCE IF NOT EXISTS "{a}".{b}
+  START WITH {c}
+  INCREMENT BY {d};
+"""
+
+set_sequence_last_val = """
+  select setval('"{a}".{b}', {c}, true);
+"""
 
 ## ALTER
 
@@ -31,35 +63,44 @@ alter_table_constraint = """
   CHECK  ({c} >= '{d}-01-01 00:00:00' AND {c} < '{e}-01-01 00:00:00');
 """
 
-attach_table_partition = """
-  ALTER TABLE {a}
-  ATTACH PARTITION {a}_old FOR VALUES
-  FROM ('{b}-01-01 00:00:00') TO ('{c}-01-01 00:00:00');
-"""
-
 attach_table_as_default_partition = (
   "ALTER TABLE {a} ATTACH PARTITION {b} DEFAULT;"
 )
 
 detach_partition = "ALTER TABLE {a} DETACH PARTITION {a}_{b};"
 
-attach_default_partition = (
-  "ALTER TABLE {a} ATTACH PARTITION {a}_default DEFAULT"
-)
-
 rename_table = "ALTER TABLE {a} RENAME TO {b};"
 
 alter_table_owner = "ALTER TABLE IF EXISTS {a} OWNER TO postgres;"
 
-alter_sequence_owner = "ALTER SEQUENCE IF EXISTS {a}_id_seq OWNER TO postgres;"
+alter_sequence_owner = "ALTER SEQUENCE IF EXISTS {a} OWNER TO postgres;"
 
-alter_sequence_owned_by = "ALTER SEQUENCE IF EXISTS {a}_id_seq OWNED BY {b}"
-
-drop_table_constraint = "ALTER TABLE {a} DROP CONSTRAINT IF EXISTS {b};"
-
-alter_table_index = "ALTER INDEX {a} RENAME TO {b};"
+alter_sequence_owned_by = "ALTER SEQUENCE IF EXISTS {a} OWNED BY {b}"
 
 alter_replica_identity = "ALTER TABLE {a} REPLICA IDENTITY FULL;"
+
+alter_column_not_null = """
+  ALTER TABLE "{a}".{b}
+  ALTER COLUMN {c}
+  SET NOT NULL;
+"""
+
+alter_table_drop_constraint_add_primary = """
+  ALTER TABLE "{a}".{b}
+  DROP CONSTRAINT {b}_pkey,
+  ADD PRIMARY KEY ({c}, {d})
+"""
+
+alter_index_rename = "ALTER INDEX {a} RENAME TO {b}"
+
+alter_index_attach_partition = "ALTER INDEX {a} ATTACH PARTITION {b};"
+
+alter_table_set_default_val = """
+  ALTER TABLE "{a}".{b}
+  ALTER COLUMN {c}
+  SET DEFAULT nextval('"{a}".{d}'::regclass);
+"""
+
 
 ## INSERT
 
@@ -73,10 +114,11 @@ move_rows_to_another_table = """
     SELECT {f} FROM moved_rows;
 """
 
-## ANALYZE
-
-run_analyze = "ANALYZE {a}_{b};"
-
+insert_data_to_table = """
+  INSERT INTO {a}
+  SELECT {b}
+  FROM {c};
+"""
 
 ## SELECT
 
@@ -126,7 +168,7 @@ get_table_existence = """
   WHERE table_schema='{a}' and table_name='{b}';
 """
 
-default_table_check = "SELECT count(*) FROM {a}_default;"
+count_table_from_db = "SELECT count(*) FROM {a}"
 
 get_table_index = """
   select {a}
@@ -135,24 +177,64 @@ get_table_index = """
     and schemaname = '{c}';
 """
 
-get_table_index_like = """
-  select {a}
-  from pg_indexes
-  where tablename = '{b}'
-    and schemaname = '{c}'
-    and {a} like '{d}';
-"""
-
-get_min_max_table = "SELECT min({a}), max({a}) FROM {b};"
-
 get_min_table = "SELECT min({a}) FROM {b} LIMIT 1;"
 
 get_order_by_limit_1 = "SELECT {a} FROM {b} ORDER BY {c} {d} LIMIT 1;"
 
+get_blocking_query = """
+  SELECT
+      activity.pid,
+      activity.usename,
+      activity.query,
+      blocking.pid AS blocking_id,
+      blocking.query AS blocking_query
+  FROM pg_stat_activity AS activity
+  JOIN
+    pg_stat_activity AS blocking
+    ON blocking.pid = ANY(pg_blocking_pids(activity.pid));
+"""
+
+aws_migrate_data = """
+  SELECT *
+    FROM aws_s3.query_export_to_s3(
+    'SELECT * FROM "{a}".{b}',
+    aws_commons.create_s3_uri(
+    '{c}',
+    '{d}',
+    '{e}'
+    ),
+  options :='format csv, HEADER true, ENCODING UTF8'
+  );
+"""
+
+get_index_from_pg_class = """
+  select i.relname as indexname
+  from pg_class i
+      join pg_index idx on idx.indexrelid = i.oid
+      join pg_class t on t.oid = idx.indrelid
+      join pg_namespace n ON n.oid = t.relnamespace
+  where i.relkind = 'I'
+      and t.relname = '{a}'
+      and n.nspname = '{b}';
+"""
+
+get_sequence_like_value = """
+  SELECT sequencename, start_value, increment_by, last_value
+  FROM pg_sequences
+  WHERE sequencename like '{a}%'
+  and schemaname = '{b}';
+"""
+
 ## DROP
 
-drop_table_index = "DROP INDEX IF EXISTS {a};"
+drop_table = 'DROP TABLE "{a}".{b};'
+
+drop_table_cascade = "DROP TABLE {a} CASCADE;"
 
 ## SET
 
 set_search_path = "SET search_path to '{a}';"
+
+## ANALYZE
+
+analyze_table = "ANALYZE {a};"

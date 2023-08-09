@@ -8,7 +8,24 @@ from psycopg2 import Error
 from sshtunnel import BaseSSHTunnelForwarderError, SSHTunnelForwarder
 
 from common.common import PartitionCommon
-from common.query import table_check_like
+from common.query import (
+  alter_index_rename,
+  alter_sequence_owned_by,
+  alter_sequence_owner,
+  alter_table_owner,
+  alter_table_set_default_val,
+  analyze_table,
+  create_normal_index,
+  create_normal_table,
+  create_sequece_if_not_exists,
+  drop_table_cascade,
+  get_sequence_like_value,
+  insert_data_to_table,
+  rename_table,
+  set_search_path,
+  set_sequence_last_val,
+  table_check_like,
+)
 from common.wrapper import get_config_n_secret
 from db.db import get_db
 from tunnel.tunnel import get_tunnel
@@ -53,7 +70,7 @@ class ReversePartition(PartitionCommon):
       logger.debug(f"Connected: {db_identifier}")
       cur = conn.cursor()
 
-      qry = f"SET search_path TO '{table['schema']}'"
+      qry = set_search_path.format(a=table["schema"])
       logger.info(qry)
       cur.execute(f"{qry};")
 
@@ -76,49 +93,45 @@ class ReversePartition(PartitionCommon):
 
         table_combine = self.check_combine_table(table, cur)
 
-        create_table = f"""
-                    CREATE TABLE {table['name']}_new (
-                        {", ".join(collist)},
-                        primary key ({table['pkey']})
-                    )
-                """
+        create_table = create_normal_table.format(
+          a=f"{table['name']}_new",
+          b=", ".join(collist),
+          c=table["pkey"],
+        )
 
         cur.execute(create_table)
 
         for tab in table_combine:
           logger.info(f"Moving data from {tab} to {table['name']}_new")
-          insertation = f"""
-            INSERT INTO {table['name']}_new
-            SELECT {','.join(colname)}
-            FROM {tab};
-          """
+          insertation = insert_data_to_table.format(
+            a=f"{table['name']}_new",
+            b=",".join(colname),
+            c=tab,
+          )
+
           cur.execute(insertation)
 
         if len(table_combine) > 0:
-          get_sequence = f"""
-            SELECT sequencename, start_value, increment_by, last_value
-            FROM pg_sequences
-            WHERE sequencename like '{table['name']}%'
-            and schemaname = '{table['schema']}';
-          """
+          get_sequence = get_sequence_like_value.format(
+            a=table["name"],
+            b=table["schema"],
+          )
 
           cur.execute(get_sequence)
 
           seq = cur.fetchall()
 
-          drop_partitioning = f"""
-                        DROP TABLE {table['name']} CASCADE;
-                    """
+          drop_partitioning = drop_table_cascade.format(a=table["name"])
 
-          alter_name = (
-            f"ALTER TABLE {table['name']}_new RENAME TO {table['name']};"
+          alter_name = rename_table.format(
+            a=f"{table['name']}_new", b=table["name"]
           )
-          alter_idx = f"""
-            ALTER INDEX {table['name']}_new_pkey
-            RENAME TO {table['name']}_pkey;
-          """
 
-          run_analyze = f"ANALYZE {table['name']};"
+          alter_idx = alter_index_rename.format(
+            a=f"{table['name']}_new_pkey", b=f"{table['name']}_pkey"
+          )
+
+          run_analyze = analyze_table.format(a=table["name"])
 
           cur.execute(drop_partitioning)
           logger.debug("Rename table to original table name")
@@ -131,50 +144,51 @@ class ReversePartition(PartitionCommon):
           if "additional_index_name" in table:
             idx_col_list = []
             for idx_col in list(table["additional_index_name"].keys()):
-              newval = f"""
-                CREATE INDEX {idx_col}
-                ON {table['name']} {table['additional_index_name'][idx_col]};
-              """
+              newval = create_normal_index.format(
+                a=idx_col,
+                b=table["name"],
+                c=table["additional_index_name"][idx_col],
+              )
+
               idx_col_list.append(newval)
 
             for idx in idx_col_list:
               cur.execute(idx)
 
           for sequence in seq:
-            create_sequence = f"""
-              CREATE SEQUENCE IF NOT EXISTS "{table["schema"]}".{sequence[0]}
-              START WITH {sequence[1]}
-              INCREMENT BY {sequence[2]};
-            """
+            create_sequence = create_sequece_if_not_exists.format(
+              a=table["schema"], b=sequence[0], c=sequence[1], d=sequence[2]
+            )
 
-            update_sequence = f"""
-              select setval('"{table["schema"]}".{sequence[0]}', {sequence[3]}, true);
-            """
+            update_sequence = set_sequence_last_val.format(
+              a=table["schema"], b=sequence[0], c=sequence[3]
+            )
 
-            change_owner = f"""
-              ALTER TABLE IF EXISTS "{table["schema"]}".{table['name']}
-              OWNER TO postgres;
-              ALTER SEQUENCE IF EXISTS "{table["schema"]}".{sequence[0]}
-              OWNER TO postgres;
-            """
+            change_owner = alter_table_owner.format(
+              a=f'"{table["schema"]}".{table["name"]}'
+            )
 
-            add_sequence_back = f"""
-              ALTER TABLE "{table["schema"]}".{table['name']}
-              ALTER COLUMN {table['pkey']}
-              SET DEFAULT nextval('"{table["schema"]}".{sequence[0]}'::regclass);
-            """
+            change_sequence_owner = alter_sequence_owner.format(
+              a=f'"{table["schema"]}".{sequence[0]}'
+            )
 
-            change_sequence_ownership = f"""
-              ALTER SEQUENCE IF EXISTS "{table["schema"]}".{sequence[0]}
-              OWNED BY {table["name"]}.{table["pkey"]}
-            """
+            add_sequence_back = alter_table_set_default_val.format(
+              a=table["schema"], b=table["name"], c=table["pkey"], d=sequence[0]
+            )
+
+            change_sequence_ownership = alter_sequence_owned_by.format(
+              a=f'"{table["schema"]}".{sequence[0]}',
+              b=f"{table['name']}.{table['pkey']}",
+            )
 
             logger.debug("Create sequence for table")
             cur.execute(create_sequence)
             logger.debug("Update sequence last value")
             cur.execute(update_sequence)
-            logger.debug("Change table and sequence owner to postgres")
+            logger.debug("Change table owner to postgres")
             cur.execute(change_owner)
+            logger.debug("Change sequence owner to postgres")
+            cur.execute(change_sequence_owner)
             logger.debug("Change sequence ownership back to original table")
             cur.execute(change_sequence_ownership)
             logger.debug("Add sequence back to original table")

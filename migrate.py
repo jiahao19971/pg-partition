@@ -18,7 +18,14 @@ from psycopg2 import Error
 from sshtunnel import BaseSSHTunnelForwarderError, SSHTunnelForwarder
 
 from common.common import PartitionCommon
-from common.query import get_order_by_limit_1, table_check
+from common.query import (
+  aws_migrate_data,
+  count_table_from_db,
+  create_aws_s3_extension,
+  drop_table,
+  get_order_by_limit_1,
+  table_check,
+)
 from common.wrapper import get_config_n_secret
 from db.db import get_db
 from tunnel.tunnel import get_tunnel
@@ -246,7 +253,7 @@ class MigratePartition(PartitionCommon):
       partitioning = self.check_table_partition(table, cur)
 
       if partitioning:
-        cur.execute("CREATE EXTENSION IF NOT EXISTS aws_s3 CASCADE;")
+        cur.execute(create_aws_s3_extension)
 
         today = datetime.date.today()
 
@@ -272,7 +279,11 @@ class MigratePartition(PartitionCommon):
             new_year = min_year + looper_year
 
             logger.debug("Counting the amount of rows the table have")
-            cur.execute(f"SELECT count(*) FROM {table['name']}_{new_year};")
+            counting_table = count_table_from_db.format(
+              a=f"{table['name']}_{new_year}"
+            )
+
+            cur.execute(counting_table)
 
             count_table = cur.fetchall()
             now = datetime.datetime.now()
@@ -293,18 +304,13 @@ class MigratePartition(PartitionCommon):
               f"Migrating data from table {new_year} to s3 {self.bucket_name}"
             )
 
-            migrate_data = f"""
-              SELECT *
-                FROM aws_s3.query_export_to_s3(
-                'SELECT * FROM "{table['schema']}".{table['name']}_{new_year}',
-                aws_commons.create_s3_uri(
-                '{self.bucket_name}',
-                '{file}',
-                '{self.region}'
-                ),
-              options :='format csv, HEADER true, ENCODING UTF8'
-              );
-            """
+            migrate_data = aws_migrate_data.format(
+              a=table["schema"],
+              b=f'{table["name"]}_{new_year}',
+              c=self.bucket_name,
+              d=file,
+              e=self.region,
+            )
 
             cur.execute(migrate_data)
             logger.info(f"Data migrated to s3 for year: {new_year}")
@@ -324,9 +330,11 @@ class MigratePartition(PartitionCommon):
               if int(count_table[0][0]) == int(count_tb):
                 logger.info(f"Data migrated check successfully {new_year}")
 
-                cur.execute(
-                  f'DROP TABLE "{table["schema"]}".{table["name"]}_{new_year};'
+                drop_partition_table = drop_table.format(
+                  a=table["schema"], b=f'{table["name"]}_{new_year}'
                 )
+
+                cur.execute(drop_partition_table)
 
                 logger.info("Removing table from the partition and database")
               else:

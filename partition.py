@@ -17,12 +17,20 @@ from sshtunnel import BaseSSHTunnelForwarderError, SSHTunnelForwarder
 
 from common.common import PartitionCommon
 from common.query import (
+  alter_column_not_null,
+  alter_index_attach_partition,
+  alter_index_rename,
   alter_replica_identity,
   alter_sequence_owned_by,
   alter_sequence_owner,
+  alter_table_drop_constraint_add_primary,
   alter_table_owner,
   attach_table_as_default_partition,
+  create_index_concurrently,
   create_table_with_partitioning,
+  create_unique_index,
+  create_unique_index_concurrently,
+  get_index_from_pg_class,
   get_table_index,
   rename_table,
   set_search_path,
@@ -84,9 +92,11 @@ class Partition(PartitionCommon):
 
   def change_owner_on_index_table(self, table, cur):
     change_owner = alter_table_owner.format(a=table["name"])
-    change_owner_sequence = alter_sequence_owner.format(a=table["name"])
+    change_owner_sequence = alter_sequence_owner.format(
+      a=f'{table["name"]}_id_seq'
+    )
     change_sequence_ownership = alter_sequence_owned_by.format(
-      a=table["name"], b=f"{table['name']}.{table['pkey']}"
+      a=f"{table['name']}_id_seq", b=f"{table['name']}.{table['pkey']}"
     )
 
     self.logger.info("Change sequence ownership")
@@ -138,16 +148,9 @@ class Partition(PartitionCommon):
       ## from postgres 10 and 11
       ## which partition index wont show
       ## in pg_indexes thus required to call from pg_class
-      check_partition_table_index = f"""
-                select i.relname as indexname
-                from pg_class i
-                    join pg_index idx on idx.indexrelid = i.oid
-                    join pg_class t on t.oid = idx.indrelid
-                    join pg_namespace n ON n.oid = t.relnamespace
-                where i.relkind = 'I'
-                    and t.relname = '{table['name']}'
-                    and n.nspname = '{table['schema']}';
-            """
+      check_partition_table_index = get_index_from_pg_class.format(
+        a=table["name"], b=table["schema"]
+      )
 
       cur.execute(check_partition_table_index)
 
@@ -199,19 +202,19 @@ class Partition(PartitionCommon):
       collist, _ = self._get_column(table)
 
       if partitioning:
-        alter_table_partition_key_to_not_null = f"""
-          ALTER TABLE "{table['schema']}".{table['name']}
-          ALTER COLUMN {table['partition']}
-          SET NOT NULL;
-        """
+        alter_table_partition_key_to_not_null = alter_column_not_null.format(
+          a=table["schema"], b=table["name"], c=table["partition"]
+        )
+
         self.logger.debug("Alter table partition column with not null")
         cur.execute(alter_table_partition_key_to_not_null)
 
-        alter_old_table_pkey = f"""
-          ALTER TABLE "{table['schema']}".{table['name']}
-          DROP CONSTRAINT {table['name']}_pkey,
-          ADD PRIMARY KEY ({table['pkey']}, {table['partition']})
-        """
+        alter_old_table_pkey = alter_table_drop_constraint_add_primary.format(
+          a=table["schema"],
+          b=table["name"],
+          c=table["pkey"],
+          d=table["partition"],
+        )
 
         self.logger.debug("Added table primary key with partition column")
         cur.execute(alter_old_table_pkey)
@@ -225,15 +228,16 @@ class Partition(PartitionCommon):
           idx_name = index[1]
 
           logger.debug(f"Renaming index {idx_name} to {idx_name}_old")
-          alter_idx = f"ALTER INDEX {idx_name} RENAME TO {idx_name}_old;"
+          alter_idx = alter_index_rename.format(a=idx_name, b=f"{idx_name}_old")
           cur.execute(alter_idx)
 
           if idx_name == f"{table['name']}_pkey":
-            partition_table_idx = f"""
-              CREATE UNIQUE INDEX {table['name']}_pkey
-              ON ONLY {table['name']}
-              USING btree ({table['pkey']}, {table['partition']});
-            """
+            partition_table_idx = create_unique_index.format(
+              a=f"{table['name']}_pkey",
+              b=table["name"],
+              c=table["pkey"],
+              d=table["partition"],
+            )
           else:
             partition_table_idx = f"{idx_query}".replace("ON", "ON ONLY")
 
@@ -259,13 +263,15 @@ class Partition(PartitionCommon):
         logger.debug(
           f"Creating new unique index concurrently for {new_idx_name}"
         )
-        new_cur.execute(
-          f"""
-            CREATE UNIQUE INDEX CONCURRENTLY {new_idx_name}
-            ON {table["name"]}_old
-            USING btree ({table["pkey"]}, {table["partition"]});
-          """
+
+        concurrent_unique_index = create_unique_index_concurrently.format(
+          a=new_idx_name,
+          b=f"{table['name']}_old",
+          c=table["pkey"],
+          d=table["partition"],
         )
+
+        new_cur.execute(concurrent_unique_index)
 
         logger.debug(
           f"""Attaching index {
@@ -274,12 +280,12 @@ class Partition(PartitionCommon):
             table['name']
           }_pkey"""
         )
-        new_cur.execute(
-          f"""
-            ALTER INDEX {table['name']}_pkey
-            ATTACH PARTITION {new_idx_name};
-          """
+
+        reattach_partition = alter_index_attach_partition.format(
+          a=f"{table['name']}_pkey", b=new_idx_name
         )
+
+        new_cur.execute(reattach_partition)
 
         if "additional_index_name" in table:
           idx_col_list = []
@@ -304,11 +310,11 @@ class Partition(PartitionCommon):
             logger.debug(
               f"Creating new index concurrently for {addon_new_idx_name}"
             )
-            newval = f"""
-              CREATE INDEX CONCURRENTLY {addon_new_idx_name}
-              ON {table['name']}_old
-              {table['additional_index_name'][idx_col]};
-            """
+            newval = create_index_concurrently.format(
+              a=addon_new_idx_name,
+              b=f"{table['name']}_old",
+              c=table["additional_index_name"][idx_col],
+            )
 
             logger.debug(
               f"""Attaching index {
@@ -317,8 +323,8 @@ class Partition(PartitionCommon):
                   idx_col
                 }"""
             )
-            newalter = (
-              f"ALTER INDEX {idx_col} ATTACH PARTITION {addon_new_idx_name};"
+            newalter = alter_index_attach_partition.format(
+              a=idx_col, b=addon_new_idx_name
             )
 
             idx_col_list.append(newval)
