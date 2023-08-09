@@ -173,7 +173,7 @@ database:
       aws_secret_access_key: test123
 ```
 ___
-1. There are 3 main scripts to run
+1. There are 4 main scripts to run
   - partition.py - Used to perform partitioning
   - yearly_partition.py - Used to perform partitioning based on the year provided
   - migrate.py - Used to perform migration of partition data from db to s3 bucket and remove the partition
