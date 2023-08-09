@@ -7,7 +7,7 @@ pip install - r requirements.txt
 ```
 
 Current repo uses pre-commit as the linter:
-The use precommit
+To use pre-commit
 ```diff
 + Update all the dependencies to the latest version
 pre-commit autoupdate
