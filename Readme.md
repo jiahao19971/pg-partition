@@ -6,6 +6,19 @@
 pip install - r requirements.txt
 ```
 
+Current repo uses pre-commit as the linter:
+The use precommit
+```diff
++ Update all the dependencies to the latest version
+pre-commit autoupdate
+
++ To install the pre-commit script for github
+pre-commit install
+```
+
+
+---
+
 ## 1. Create an .env file in the directory
 Below show all the env options available:
 ```diff
