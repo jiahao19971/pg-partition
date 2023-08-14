@@ -185,26 +185,26 @@ class Partition(PartitionCommon):
       collist, _ = self._get_column(table)
 
       if partitioning:
-        alter_table_partition_key_to_not_null = (
-          self.alter_column_not_null.format(
-            a=table["schema"], b=table["name"], c=table["partition"]
-          )
-        )
+        # alter_table_partition_key_to_not_null = (
+        #   self.alter_column_not_null.format(
+        #     a=table["schema"], b=table["name"], c=table["partition"]
+        #   )
+        # )
 
-        self.logger.debug("Alter table partition column with not null")
-        cur.execute(alter_table_partition_key_to_not_null)
+        # self.logger.debug("Alter table partition column with not null")
+        # cur.execute(alter_table_partition_key_to_not_null)
 
-        alter_old_table_pkey = (
-          self.alter_table_drop_constraint_add_primary.format(
-            a=table["schema"],
-            b=table["name"],
-            c=table["pkey"],
-            d=table["partition"],
-          )
-        )
+        # alter_old_table_pkey = (
+        #   self.alter_table_drop_constraint_add_primary.format(
+        #     a=table["schema"],
+        #     b=table["name"],
+        #     c=table["pkey"],
+        #     d=table["partition"],
+        #   )
+        # )
 
-        self.logger.debug("Added table primary key with partition column")
-        cur.execute(alter_old_table_pkey)
+        # self.logger.debug("Added table primary key with partition column")
+        # cur.execute(alter_old_table_pkey)
 
         self.create_partitioning(collist, table, cur)
 

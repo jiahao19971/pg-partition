@@ -92,7 +92,7 @@ class YearlyPartition(PartitionCommon):
     check_information_schema = self.get_table_existence.format(
       a=table["schema"], b=table_name
     )
-    logger.debug(check_information_schema)
+    logger.debug("Checking table count from information_schema.tables")
     cur.execute(check_information_schema)
 
     data = cur.fetchall()
@@ -139,7 +139,7 @@ class YearlyPartition(PartitionCommon):
           min_table = self.get_min_table.format(
             a=table["partition"], b=f"{table['name']}_old"
           )
-          logger.debug(min_table)
+          logger.debug("Checking minumum year from default partition")
           cur.execute(min_table)
           min_date = cur.fetchall()
 
@@ -181,7 +181,7 @@ class YearlyPartition(PartitionCommon):
   def main(self, table=None, database_config=None, application_name=None):
     event = {
       "table": table,
-      "year": 2015,
+      "year": 2017,
     }
     self.yearly_partition(table, database_config, application_name, event)
 
