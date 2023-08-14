@@ -208,4 +208,4 @@ ___
   ![reverse_partition.py](./image/reverse_partition.py.png)
 
 1. Other script to be used:
-  - check_blocker.py - Used to verified that during partitioning, no table are block
+  - [check_blocker.py](./check_blocker.py) - Used to verified that during partitioning, no table are block
