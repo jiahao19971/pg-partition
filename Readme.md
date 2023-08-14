@@ -198,10 +198,14 @@ database:
 ```
 ___
 1. There are 4 main scripts to run
-  - partition.py - Used to perform partitioning
-  - yearly_partition.py - Used to perform partitioning based on the year provided
-  - migrate.py - Used to perform migration of partition data from db to s3 bucket and remove the partition
-  - reverse_partition.py - Used to reverse the partitioning
+  - [partition.py](./partition.py) - Used to perform partitioning
+  ![partition.py](./image/partition.py.png)
+  - [yearly_partition.py](./yearly_partition.py) - Used to perform partitioning based on the year provided
+  ![yearly_partition.py](./image/yearly_partition.py.png)
+  - [migrate.py](./migrate.py) - Used to perform migration of partition data from db to s3 bucket and remove the partition
+  ![migrate.py](./image/migrate.py.png)
+  - [reverse_partition.py](./reverse_partition.py) - Used to reverse the partitioning
+  ![reverse_partition.py](./image/reverse_partition.py.png)
 
-2. Other script to be used:
+1. Other script to be used:
   - check_blocker.py - Used to verified that during partitioning, no table are block

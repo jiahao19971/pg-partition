@@ -37,6 +37,7 @@ repos:
                 |(.*).json
                 |.gitignore
                 |.github/workflows/(.*).yaml
+                |(.*).png
             )$
 
 
