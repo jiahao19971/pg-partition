@@ -66,12 +66,8 @@ class ReversePartition(PartitionCommon):
             table['name']
           }"""
         )
-        collist = []
-        colname = []
-        for columnname in list(table["column"].keys()):
-          newval = f"{columnname} {table['column'][columnname]}"
-          collist.append(newval)
-          colname.append(columnname)
+
+        collist, colname = self._get_column(table)
 
         table_combine = self.check_combine_table(table, cur)
 
