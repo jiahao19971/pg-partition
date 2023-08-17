@@ -1,6 +1,6 @@
 **.env**
 **.pem
-
+**.DS_Store
 **__pycache__
 **.vscode
 **.sql
