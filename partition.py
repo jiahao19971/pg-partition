@@ -341,6 +341,13 @@ class Partition(PartitionCommon):
       conn.rollback()
       conn.close()
     finally:
+      logger.info(
+        f"""Successfully partition table: {
+          table['schema']
+        }.{
+          table['name']
+        }"""
+      )
       if isinstance(server, SSHTunnelForwarder):
         server.stop()
 

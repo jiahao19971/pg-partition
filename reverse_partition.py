@@ -192,6 +192,13 @@ class ReversePartition(PartitionCommon):
       conn.rollback()
       conn.close()
     finally:
+      logger.info(
+        f"""Successfully revert partition changes on table: {
+          table['schema']
+        }.{
+          table['name']
+        }"""
+      )
       if isinstance(server, SSHTunnelForwarder):
         server.stop()
 

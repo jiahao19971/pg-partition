@@ -346,6 +346,13 @@ class MigratePartition(PartitionCommon):
       conn.rollback()
       conn.close()
     finally:
+      logger.info(
+        f"""Successfully migrated table: {
+          table['schema']
+        }.{
+          table['name']
+        }"""
+      )
       if isinstance(server, SSHTunnelForwarder):
         server.stop()
 

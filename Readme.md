@@ -209,3 +209,4 @@ ___
 
 1. Other script to be used:
   - [check_blocker.py](./check_blocker.py) - Used to verified that during partitioning, no table are block
+  - [benchmark.py](./benchmark.py) - Used to perform benchmarking for partitioning, make sure to create your own benchmark.sql

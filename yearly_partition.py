@@ -174,6 +174,13 @@ class YearlyPartition(PartitionCommon):
       conn.rollback()
       conn.close()
     finally:
+      logger.info(
+        f"""Yearly partition for table {
+          table['schema']
+        }.{
+          table['name']
+        } completed"""
+      )
       if isinstance(server, SSHTunnelForwarder):
         server.stop()
 

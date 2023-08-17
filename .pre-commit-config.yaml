@@ -27,6 +27,7 @@ repos:
                 |.pylintrc
                 |.isort.cfg
                 |requirements.txt
+                |.DS_Store
                 |README.md
                 |Readme.md
                 |docker-compose.yaml
