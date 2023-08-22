@@ -23,8 +23,10 @@ yaml.preserve_quotes = True
 
 class PartitionCommon(PartitionQuery):
   """
-  PartitionCommon class is used to
-  main class to specify the common function
+  PartitionCommon class is used as
+  the parent class for partitioning
+
+  The main class specify the common function
   required for the partitioning process
 
   Args:
