@@ -67,14 +67,6 @@ class VacuumDB(PartitionCommon):
 
     config = self._create_db_url(new_conn, database_config)
 
-    script_dir = os.listdir("./")
-
-    bechmark_exist = [True for x in script_dir if x == "benchmark.sql"]
-
-    if True not in bechmark_exist:
-      self.logger.error("Benchmark file does not exist, please create 1")
-      sys.exit()
-
     with subprocess.Popen(
       [
         "vacuumdb",
