@@ -75,17 +75,17 @@ class YearlyPartition(PartitionCommon):
       a=table["name"], b=f"{table['name']}_old"
     )
 
-    logger.debug("Detach old partition table")
+    logger.info("Detach old partition table")
     cur.execute(detach_old_partition)
-    logger.debug(f"Create new table for partition: {year}")
+    logger.info(f"Create new table for partition: {year}")
     cur.execute(create_table)
-    logger.debug(f"Change table partition ownership: {year}")
+    logger.info(f"Change table partition ownership: {year}")
     cur.execute(change_table_owner)
-    logger.debug(f"Add table constraint for table: {year}")
+    logger.info(f"Add table constraint for table: {year}")
     cur.execute(add_constraint_table)
-    logger.debug(f"Migrate old data to new table: {year}")
+    logger.info(f"Migrate old data to new table: {year}")
     cur.execute(move_lines)
-    logger.debug("Attach table as default partition")
+    logger.info("Attach table as default partition")
     cur.execute(attach_as_default)
 
   def run_partition(self, logger, cur, table, table_name, year, colname):
