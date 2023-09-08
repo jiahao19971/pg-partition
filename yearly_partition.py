@@ -98,7 +98,7 @@ class YearlyPartition(PartitionCommon):
     data = cur.fetchall()
 
     if data[0][0] == 1:
-      logger.error(f"Table {table_name} already exist")
+      logger.warning(f"Table {table_name} already exist")
     else:
       self.perform_split_partition(
         logger, table, year, cur, table_name, colname
@@ -166,10 +166,11 @@ class YearlyPartition(PartitionCommon):
 
       conn.close()
     except BaseSSHTunnelForwarderError as e:
-      self.logger.error(e)
+      self.logger.error(f"{db_identifier}: {e}")
       conn.rollback()
       conn.close()
     except Error as opte:
+      self.logger.error(f"psycopg2 error: {db_identifier}")
       self.print_psycopg2_exception(opte)
       conn.rollback()
       conn.close()
