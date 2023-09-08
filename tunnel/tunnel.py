@@ -49,7 +49,7 @@ class Tunneler(PartitionCommon):
     self.logger = self.logging_func("DB_Tunneler")
     logs = self._check_logger()
     self.logger.setLevel(self._evaluate_logger(logs))
-    self.logger.info(f"Tunnel Initialize: {instance}")
+    self.logger.debug(f"Tunnel Initialize: {instance}")
     self.remote_host = self._get_remote_host(remote_host)
     self.remote_port = self._get_remote_port(remote_port)
     self.remote_username = self._get_remote_username(remote_username)
@@ -122,7 +122,7 @@ class Tunneler(PartitionCommon):
       sock = socket.socket()
       sock.bind(("", 0))
       if self.remote_auth_type:
-        self.logger.info("Authenticate with Private Key...")
+        self.logger.debug("Authenticate with Private Key...")
         server = SSHTunnelForwarder(
           (self.remote_host, self.remote_port),
           ssh_username=self.remote_username,

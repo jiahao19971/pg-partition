@@ -333,7 +333,7 @@ class Partition(PartitionCommon):
         conn.close()
 
     except BaseSSHTunnelForwarderError as e:
-      self.logger.error(e)
+      self.logger.error(f"{db_identifier}: {e}")
       conn.rollback()
       conn.close()
     except Error as opte:
