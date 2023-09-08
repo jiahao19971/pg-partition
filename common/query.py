@@ -280,7 +280,7 @@ class PartitionQuery:
       self.logger.error(e)
       raise e
     except KeyError:
-      self.logger.warning(self.env_string, "LOGLEVEL", DEBUGGER.DEBUG.value)
+      self.logger.debug(self.env_string, "LOGLEVEL", DEBUGGER.DEBUG.value)
       return DEBUGGER.DEBUG.value
 
   def _evaluate_logger(self, logs):
