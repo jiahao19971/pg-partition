@@ -120,9 +120,7 @@ class PartitionCommon(PartitionQuery):
     logger = self.logging_func(application_name=application_name)
     checker = self.table_check.format(a=table["name"], b=table["schema"])
 
-    logger.info(
-      f"Checking table if it is partition: {table['schema']}.{table['name']}"
-    )
+    logger.debug("Checking table if it is partition")
     cur.execute(checker)
     data = cur.fetchall()
 

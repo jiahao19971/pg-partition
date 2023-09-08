@@ -13,6 +13,7 @@ config and secret from the config.yaml and secret.yaml
 """
 
 import asyncio
+import time
 
 
 def background(f):
@@ -29,13 +30,18 @@ def get_config_n_secret(func):
     secret = self.get_secret()
     db = secret["database"]
 
-    for database_config in db:
-      config = self.get_config()
-      for table in config["table"]:
-        db_identifier = database_config["db_identifier"]
+    n_of_chunks = 3
+    for i in range(0, len(db), n_of_chunks):
+      for database_config in db[i : i + n_of_chunks]:
+        config = self.get_config()
+        for table in config["table"]:
+          db_identifier = database_config["db_identifier"]
 
-        application_name = f"{db_identifier}:{table['schema']}.{table['name']}"
+          application_name = (
+            f"{db_identifier}:{table['schema']}.{table['name']}"
+          )
 
-        func(*args, table, database_config, application_name)
+          func(*args, table, database_config, application_name)
+        time.sleep(1)
 
   return wrapped

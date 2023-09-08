@@ -274,7 +274,7 @@ class PartitionQuery:
   def _check_logger(self) -> str:
     try:
       logger = DEBUGGER(os.environ["LOGLEVEL"])
-      self.logger.info("Environment variable LOGLEVEL was found")
+      self.logger.debug("Environment variable LOGLEVEL was found")
       return logger.value
     except ValueError as e:
       self.logger.error(e)
