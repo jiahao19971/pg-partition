@@ -52,14 +52,14 @@ class DBLoader(PartitionCommon):
   ):
     super().__init__()
     self.logger = self.logging_func(f"DB_{database}")
-    self.logger.info(f"Database Initialize: {database}")
+    self.logger.debug(f"Database Initialize: {database}")
 
     if isinstance(server, SSHTunnelForwarder):
-      self.logger.info(
+      self.logger.debug(
         f"Database {database} Initialize: {server.local_bind_host}"
       )
     else:
-      self.logger.info(
+      self.logger.debug(
         f"Database {database} Initialize: {server['local_bind_host']}"
       )
 
