@@ -176,8 +176,8 @@ class MicrobatchMigration(PartitionCommon):
       logger.debug(search_path)
       cur.execute(search_path)
 
-      parent_table = f"{table['schema']}.{table['name']}_old"
-      child_table = f"{table['schema']}.{table['name']}_{year}"
+      parent_table = f'"{table["schema"]}".{table["name"]}_old'
+      child_table = f'"{table["schema"]}".{table["name"]}_{year}'
 
       if (
         "DEPLOYMENT" in os.environ and os.environ["DEPLOYMENT"] == "kubernetes"
@@ -201,7 +201,7 @@ class MicrobatchMigration(PartitionCommon):
         year_to_partition = cur.fetchone()[0]
 
         year = year_to_partition.year
-        child_table = f"{table['schema']}.{table['name']}_{year}"
+        child_table = f'"{table["schema"]}".{table["name"]}_{year}'
 
       logger.info(f"Create table if not exist: {year}")
       create_child_table_if_not_exists = f"""
