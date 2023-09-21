@@ -217,6 +217,10 @@ class MicrobatchMigration(PartitionCommon):
         logger, year, table, cur, conn, batch, parent_table, child_table
       )
 
+      search_path = self.set_search_path.format(a=table["schema"])
+      logger.debug(search_path)
+      cur.execute(search_path)
+
       logger.info("Data migration completed successfully")
 
       logger.info(f"Delete data from parent table where year: {year}")
