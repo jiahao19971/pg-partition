@@ -42,12 +42,21 @@ ENV=staging
 + Params available is kubernetes
 + Run check base on min_date of the table instead
 + of the event u put in
++ Optional
++ If not mention, it will use the event year value specify in microbatching.py/yearly_partition.py
 DEPLOYMENT=kubernetes
 
 + LOGLEVEL can be added if you want to reduce the amount of logs
 + Params available is DEBUG | INFO | WARNING | ERROR
 + Default is set to DEBUG
++ Optional
 # LOGLEVEL=DEBUG
+
++ BATCH_SIZE can be added if you want to increase or reduce the yearly partition transaction size
++ Params must only be string int or else it will use the default
++ Default is set to 1000
++ Optional
+# BATCH_SIZE=1000
 ```
 
 ## 2. Once we have the `.env` ready, we will need to create a `config.yaml`
