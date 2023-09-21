@@ -96,6 +96,10 @@ class PartitionQuery:
     "ALTER TABLE {a} ATTACH PARTITION {b} DEFAULT;"
   )
 
+  alter_table_add_partition = """
+    ALTER TABLE {a} ATTACH PARTITION {b} FOR VALUES FROM ('{c}-01-01 00:00:00') TO ('{d}-01-01 00:00:00');
+  """
+
   detach_partition = "ALTER TABLE {a} DETACH PARTITION {a}_{b};"
 
   rename_table = "ALTER TABLE {a} RENAME TO {b};"
