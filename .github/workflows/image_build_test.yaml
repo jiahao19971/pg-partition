@@ -1,4 +1,4 @@
-name: Build Test Pg Partition
+name: Build Test Pg-Partition
 
 on:
   push:
