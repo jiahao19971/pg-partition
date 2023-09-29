@@ -1,9 +1,10 @@
-name: Build Pg Partition
+name: Build Test Pg Partition
 
 on:
   push:
     branches:
-      - master
+      - '*'
+      - '!master'
 
 env:
   ECR_REGISTRY: 606804169143.dkr.ecr.ap-southeast-1.amazonaws.com
@@ -18,7 +19,7 @@ jobs:
       - id: image_tag
         name: Setup image tags
         run: |
-          IMAGE_TAG=latest
+          IMAGE_TAG=test
           echo "container_image_uri=$ECR_REGISTRY/$ECR_BUILD_REPO:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
   docker_build:
