@@ -99,6 +99,21 @@ class CompletionMigration(MicrobatchMigration):
       parent_table = f'"{table["schema"]}".{table["name"]}_old'
       child_table = f'"{table["schema"]}".{table["name"]}_{year}'
 
+      check_table_old = self.check_table_exists.format(
+        a=f"{table['name']}_old", b=table["schema"]
+      )
+
+      cur.execute(check_table_old)
+      if check_table_old is False:
+        logger.info(
+          f"""No old table to migrate for table: {
+            table['schema']
+          }.{
+            table['name']
+          }"""
+        )
+        return
+
       if (
         "DEPLOYMENT" in os.environ and os.environ["DEPLOYMENT"] == "kubernetes"
       ):
