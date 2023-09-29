@@ -173,9 +173,9 @@ class MicrobatchMigration(PartitionCommon):
 
       cur = conn.cursor()
 
-      set_trx_serializable = self.set_isolation_serializable
-      logger.info("SET transaction isolation level to serializable")
-      cur.execute(set_trx_serializable)
+      # set_trx_serializable = self.set_isolation_serializable
+      # logger.info("SET transaction isolation level to serializable")
+      # cur.execute(set_trx_serializable)
 
       search_path = self.set_search_path.format(a=table["schema"])
       logger.debug(search_path)

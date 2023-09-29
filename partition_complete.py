@@ -177,7 +177,13 @@ class CompletionMigration(MicrobatchMigration):
           )
       else:
         logger.info(
-          f"Table {child_table} is a partition table of {parent_table}"
+          f"""Table {
+            child_table
+          } is a partition table of {
+            table['schema']
+          }.{
+            table['name']
+          }"""
         )
     except BaseSSHTunnelForwarderError as e:
       self.logger.error(f"{db_identifier}: {e}")
