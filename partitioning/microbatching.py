@@ -34,7 +34,6 @@ import os
 from multiprocessing import Process
 
 from psycopg2 import Error
-from psycopg2.errors import WrongObjectType
 from sshtunnel import BaseSSHTunnelForwarderError, SSHTunnelForwarder
 
 from common.common import PartitionCommon
@@ -59,9 +58,9 @@ class MicrobatchMigration(PartitionCommon):
     self, logger, year, table, cur, conn, batch, parent_table, child_table
   ):
     logger.info("Get latest id from child table")
-    get_latest_id_from_child_table = self.get_max_with_coalesce.format(
-      a=table["pkey"], b=child_table
-    )
+    get_latest_id_from_child_table = f"""
+            SELECT COALESCE(MAX({table['pkey']}), 0) FROM {child_table};
+        """
 
     cur.execute(get_latest_id_from_child_table)
 
@@ -69,15 +68,12 @@ class MicrobatchMigration(PartitionCommon):
 
     while True:
       logger.info("Get latest max id from parent table")
-      get_latest_max_id = self.get_max_conditional_table.format(
-        a=table["pkey"],
-        b=parent_table,
-        c=table["partition"],
-        d=year,
-        e=year + 1,
-      )
+      get_latest_max_id = f"""
+                SELECT max({table['pkey']}) FROM {parent_table}
+                WHERE {table['partition']} >= '{year}-01-01 00:00:00' AND
+                {table['partition']} < '{year + 1}-01-01 00:00:00';
+            """
       cur.execute(get_latest_max_id)
-
       parent_max_id = cur.fetchone()[0]
 
       if last_processed_id is None:
@@ -88,23 +84,22 @@ class MicrobatchMigration(PartitionCommon):
         break
 
       logger.info(f"Inserting data into child table: {last_processed_id}")
-      select_query = self.microbatch_insert.format(
-        a=child_table,
-        b=parent_table,
-        c=last_processed_id,
-        d=table["partition"],
-        e=year,
-        f=year + 1,
-        g=table["pkey"],
-        h=batch,
-      )
+      select_query = f"""
+                INSERT INTO {child_table}
+                SELECT * FROM {parent_table}
+                WHERE id > {last_processed_id}
+                AND {table['partition']} >= '{year}-01-01 00:00:00'
+                AND {table['partition']} < '{year + 1}-01-01 00:00:00'
+                ORDER BY {table['pkey']}
+                LIMIT {batch};
+            """
 
       cur.execute(select_query)
       conn.commit()
 
-      get_last_id_from_child_table = self.get_max_table.format(
-        a=table["pkey"], b=child_table
-      )
+      get_last_id_from_child_table = f"""
+                SELECT MAX({table['pkey']}) FROM {child_table};
+            """
 
       logger.info("Get last inserted id from child table")
       cur.execute(get_last_id_from_child_table)
@@ -121,27 +116,6 @@ class MicrobatchMigration(PartitionCommon):
         break
 
       last_processed_id = last_inserted_id
-
-  def attach_partition(self, logger, year, table, cur, conn):
-    try:
-      logger.info(f"Attach new table to partition: {year}")
-      attach_table_as_partition = self.alter_table_add_partition.format(
-        a=table["name"], b=f"{table['name']}_{year}", c=year, d=year + 1
-      )
-      cur.execute(attach_table_as_partition)
-
-      logger.info(f"Add constraint to new table: {year}")
-      add_constraint_table = self.alter_table_constraint.format(
-        a=table["name"], b=year, c=table["partition"], d=year, e=year + 1
-      )
-
-      cur.execute(add_constraint_table)
-
-      conn.commit()
-    except WrongObjectType:
-      logger.info("No partitioning needed as table already partition")
-    except Error as opte:
-      raise opte
 
   # @background
   def microbatching(self, table, database_config, application_name, event):
@@ -172,23 +146,21 @@ class MicrobatchMigration(PartitionCommon):
       logger.debug(f"Connected: {db_identifier}")
 
       cur = conn.cursor()
-
-      set_trx_serializable = self.set_isolation_serializable
       logger.info("SET transaction isolation level to serializable")
-      cur.execute(set_trx_serializable)
+      cur.execute("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;")
 
       search_path = self.set_search_path.format(a=table["schema"])
       logger.debug(search_path)
       cur.execute(search_path)
 
-      parent_table = f'"{table["schema"]}".{table["name"]}_old'
+      parent_table = f'"{table["schema"]}".{table["name"]}'
+      temp_table = f'"{table["schema"]}".{table["name"]}_temp'
       child_table = f'"{table["schema"]}".{table["name"]}_{year}'
 
       if (
         "DEPLOYMENT" in os.environ and os.environ["DEPLOYMENT"] == "kubernetes"
       ):
-        get_min = self.get_min_table.format(a=table["pkey"], b=parent_table)
-        cur.execute(get_min)
+        cur.execute(f"SELECT min({table['pkey']}) FROM {parent_table}")
 
         min_table = cur.fetchone()[0]
 
@@ -196,29 +168,63 @@ class MicrobatchMigration(PartitionCommon):
           logger.info("No data to migrate")
           return
 
-        get_id = self.get_table_custom.format(
-          a=table["partition"], b=parent_table, c=table["pkey"], d=min_table
+        cur.execute(
+          f"""
+            SELECT {table['partition']}
+            FROM {parent_table}
+            WHERE {table['pkey']} = {min_table}
+          """
         )
 
-        cur.execute(get_id)
-
         year_to_partition = cur.fetchone()[0]
+        min_year = year_to_partition.year
 
-        year = year_to_partition.year
-        child_table = f'"{table["schema"]}".{table["name"]}_{year}'
+        cur.execute(f"SELECT max({table['pkey']}) FROM {parent_table}")
+        max_table = cur.fetchone()[0]
 
-      logger.info(f"Create table if not exist: {year}")
-      create_child_table_if_not_exists = self.create_inherit_table.format(
-        a=child_table, b=parent_table
-      )
+        cur.execute(
+          f"""
+            SELECT {table['partition']}
+            FROM {parent_table}
+            WHERE {table['pkey']} = {max_table}
+          """
+        )
 
-      cur.execute(create_child_table_if_not_exists)
+        max_year_to_partition = cur.fetchone()[0]
+        max_year = max_year_to_partition.year + 1
 
-      conn.commit()
+        for i in range(min_year, max_year):
+          year = i
 
-      self.data_migration(
-        logger, year, table, cur, conn, batch, parent_table, child_table
-      )
+          child_table = f'"{table["schema"]}".{table["name"]}_{year}'
+
+          logger.info(f"Create table if not exist: {year}")
+
+          create_child_table_if_not_exists = f"""
+                    CREATE TABLE IF NOT EXISTS {child_table}
+                    (LIKE {temp_table} INCLUDING ALL);
+                """
+          cur.execute(create_child_table_if_not_exists)
+
+          conn.commit()
+
+          self.data_migration(
+            logger, year, table, cur, conn, batch, parent_table, child_table
+          )
+      else:
+        logger.info(f"Create table if not exist: {year}")
+        create_child_table_if_not_exists = f"""
+                  CREATE TABLE IF NOT EXISTS {child_table}
+                  (LIKE {temp_table} INCLUDING ALL);
+              """
+
+        cur.execute(create_child_table_if_not_exists)
+
+        conn.commit()
+
+        self.data_migration(
+          logger, year, table, cur, conn, batch, parent_table, child_table
+        )
     except BaseSSHTunnelForwarderError as e:
       self.logger.error(f"{db_identifier}: {e}")
       conn.rollback()

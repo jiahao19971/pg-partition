@@ -19,9 +19,10 @@ COPY ./db ./db
 COPY ./common ./common
 COPY ./tunnel ./tunnel
 
-COPY ./config.json config.json
-COPY ./secret.json secret.json
-COPY ./microbatching.py microbatching.py
-COPY ./yearly_partition.py yearly_partition.py
+COPY ./config.json .
+COPY ./secret.json .
+COPY ./microbatching.py .
+COPY ./partition_complete.py .
+COPY ./cleanup.py .
 
 CMD [ "python", "microbatching.py"]
