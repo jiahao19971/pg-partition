@@ -104,7 +104,10 @@ class CompletionMigration(MicrobatchMigration):
       )
 
       cur.execute(check_table_default)
-      if check_table_default is True:
+
+      default_exist = cur.fetchone()[0]
+
+      if default_exist is True:
         parent_table = f'"{table["schema"]}".{table["name"]}_default'
 
       if (
