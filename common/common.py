@@ -118,7 +118,20 @@ class PartitionCommon(PartitionQuery):
   def checker_table(self, table, cur):
     application_name = f"{table['schema']}.{table['name']}"
     logger = self.logging_func(application_name=application_name)
-    checker = self.table_check.format(a=table["name"], b=table["schema"])
+    checker = self.table_check.format(a=f'{table["name"]}', b=table["schema"])
+
+    logger.debug("Checking table if it is partition")
+    cur.execute(checker)
+    data = cur.fetchall()
+
+    return data
+
+  def checker_temp_table(self, table, cur):
+    application_name = f"{table['schema']}.{table['name']}"
+    logger = self.logging_func(application_name=application_name)
+    checker = self.table_check.format(
+      a=f'{table["name"]}_temp', b=table["schema"]
+    )
 
     logger.debug("Checking table if it is partition")
     cur.execute(checker)
@@ -128,8 +141,24 @@ class PartitionCommon(PartitionQuery):
 
   def check_table_partition(self, table, cur):
     data = self.checker_table(table, cur)
-
     partition = bool("partitioned table" not in list(data[0]))
+
+    if partition is True:
+      cur.execute(
+        f"""
+          SELECT EXISTS (
+              SELECT 1 FROM pg_tables
+              WHERE tablename = '{table["name"]}_temp'
+              AND schemaname = '{table["schema"]}'
+          ) AS table_existence;
+      """
+      )
+
+      table_exist = cur.fetchone()[0]
+
+      if table_exist is True:
+        new_data = self.checker_temp_table(table, cur)
+        partition = bool("partitioned table" not in list(new_data[0]))
 
     return partition
 

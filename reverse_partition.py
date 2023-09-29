@@ -3,6 +3,8 @@
     It utilize psycopy2 to connect to the database and execute the query
     Additional feature: it is able to perform tunneling to the database
 """
+from multiprocessing import Process
+
 from dotenv import load_dotenv
 from psycopg2 import Error
 from sshtunnel import BaseSSHTunnelForwarderError, SSHTunnelForwarder
@@ -204,7 +206,16 @@ class ReversePartition(PartitionCommon):
 
   @get_config_n_secret
   def main(self, table=None, database_config=None, application_name=None):
-    self.reverse_partition(table, database_config, application_name)
+    p = Process(
+      target=self.reverse_partition,
+      args=(
+        table,
+        database_config,
+        application_name,
+      ),
+    )
+
+    return p
 
 
 if __name__ == "__main__":
