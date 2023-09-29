@@ -4,6 +4,8 @@
   From creating the partition, migrating the data, and combining the partition
 
   This is not encourgage to be used in production yet as it still perform slower
+  However, this is a good start to be used in development environment
+  and to be used as a reference for future development
 """
 import time
 
