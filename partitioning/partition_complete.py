@@ -219,7 +219,7 @@ class CompletionhMigration(MicrobatchMigration):
 
           cur.execute(check_child_is_partition)
 
-          is_table_partition = cur.fetchone()[0] == 0
+          is_table_partition = cur.fetchone()[0] > 0
 
           if is_table_partition is False:
             logger.info(f"Table {child_table} is not a partition table")
