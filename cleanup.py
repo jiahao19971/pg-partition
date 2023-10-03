@@ -73,9 +73,9 @@ class CleanupMigration(MicrobatchMigration):
       logger.debug(f"Checking if table {default_table} have data")
       cur.execute(check_row_existence)
 
-      count = cur.fetchone()[0]
+      row_exist = cur.fetchone()[0]
 
-      if count is True:
+      if row_exist is True:
         logger.warning(f"Table {default_table} is not empty, skipping")
         return
 
