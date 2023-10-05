@@ -21,8 +21,11 @@ COPY ./tunnel ./tunnel
 
 COPY ./config.json .
 COPY ./secret.json .
+COPY ./live_partitioning.py .
+COPY ./cleanup_live.py .
+COPY ./rollback_live.py .
 COPY ./microbatching.py .
 COPY ./partition_complete.py .
 COPY ./cleanup.py .
 
-CMD [ "python", "microbatching.py"]
+CMD [ "python", "live_partitioning.py"]
