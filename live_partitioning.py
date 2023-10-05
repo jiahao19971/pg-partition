@@ -447,7 +447,6 @@ class MicrobatchMigration(PartitionCommon):
 
       if old_exist is False:
         logger.info("No data to migrate")
-        ## Perform moving data from default to new table if required
         return
 
       self.check_if_old_is_partition(logger, cur, table, wschema_parent_table)
@@ -567,7 +566,7 @@ class MicrobatchMigration(PartitionCommon):
       conn.close()
     finally:
       logger.info(
-        f"""Microbathing migration for table {
+        f"""Live Partitioning for table {
                 table['schema']
                 }.{
                 table['name']
