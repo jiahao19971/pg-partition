@@ -599,26 +599,3 @@ class MicrobatchMigration(PartitionCommon):
 if __name__ == "__main__":
   batchrun = MicrobatchMigration()
   batchrun.main()
-
-
-## 2020
-## 11 hours
-
-# 12.50 start live partitioning
-# 13.31 start insert
-# 24 am insert complete
-
-
-## 2021 (lock 15 min)
-# 10.15
-# 10.32 start insert
-# 1.55 insert complete
-
-## 2022 (lock 15 min approx)
-# 13.56
-# 15.45
-
-## 2023
-# 15.56
-# 16.09 start insert
-# 17:00 insert complete
