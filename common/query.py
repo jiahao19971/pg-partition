@@ -34,23 +34,23 @@ class PartitionQuery:
 
   ## Create
   create_normal_table = """
-    CREATE TABLE {a} ({b},
+    CREATE TABLE IF NOT EXISTS {a} ({b},
       primary key ({c})
     )
   """
 
   create_default_partition_table = """
-    CREATE TABLE {a} PARTITION OF {b} DEFAULT;
+    CREATE TABLE IF NOT EXISTS {a} PARTITION OF {b} DEFAULT;
   """
 
   create_table_with_partitioning = (
-    "CREATE TABLE {a} ({b}) PARTITION BY RANGE ({c});"
+    "CREATE TABLE IF NOT EXISTS {a} ({b}) PARTITION BY RANGE ({c});"
   )
 
   create_partition_of_table = """
-    CREATE TABLE {a}_{b}
-    PARTITION OF {a} FOR VALUES
-    FROM ('{b}-01-01 00:00:00') TO ('{c}-01-01 00:00:00');
+    CREATE TABLE IF NOT EXISTS {a}
+    PARTITION OF {b} FOR VALUES
+    FROM ('{c}-01-01 00:00:00') TO ('{d}-01-01 00:00:00');
   """
 
   create_aws_s3_extension = "CREATE EXTENSION IF NOT EXISTS aws_s3 CASCADE;"
@@ -93,12 +93,64 @@ class PartitionQuery:
       (LIKE {b} INCLUDING ALL);
   """
 
+  create_view_with_where = """
+    CREATE OR REPLACE VIEW {a} AS
+      SELECT
+          *
+      FROM
+          {b}
+      WHERE {c} > {d}
+      UNION ALL
+      SELECT
+          *
+      FROM
+          {e};
+  """
+
+  create_partition_function_and_trigger = """
+    CREATE OR REPLACE FUNCTION move_to_partitioned()
+      RETURNS trigger AS
+      $$
+      BEGIN
+        IF TG_OP = 'INSERT' THEN
+          INSERT INTO {a} ({b})
+            VALUES ({c});
+        ELSEIF TG_OP = 'UPDATE' THEN
+          DELETE FROM {a} WHERE {d} = OLD.{d};
+          INSERT INTO {a} ({e})
+            VALUES ({f});
+        ELSEIF TG_OP = 'DELETE' THEN
+          DELETE FROM {a} WHERE {d} = OLD.{d};
+        END IF;
+      RETURN NEW;
+      END;
+      $$
+      LANGUAGE 'plpgsql';
+
+    DO
+      $$BEGIN
+        CREATE TRIGGER view_trigger
+          INSTEAD OF INSERT OR UPDATE OR DELETE ON {g}
+          FOR EACH ROW
+          EXECUTE FUNCTION move_to_partitioned();
+      EXCEPTION
+        WHEN duplicate_object THEN
+            NULL;
+      END;$$;
+  """
+
   ## ALTER
 
   alter_table_constraint = """
     ALTER TABLE {a}_{b}
     ADD CONSTRAINT {a}_{b}
     CHECK  ({c} >= '{d}-01-01 00:00:00' AND {c} < '{e}-01-01 00:00:00');
+  """
+
+  alter_index_to_pkey = """
+    ALTER TABLE {a}
+    ADD CONSTRAINT {b} PRIMARY KEY
+    USING INDEX {c};
   """
 
   attach_table_as_default_partition = (
@@ -160,7 +212,7 @@ class PartitionQuery:
   microbatch_insert = """
     INSERT INTO {a}
     SELECT * FROM {b}
-    WHERE id > {c}
+    WHERE {g} > {c}
     AND {d} >= '{e}-01-01 00:00:00'
     AND {d} < '{f}-01-01 00:00:00'
     ORDER BY {g}
@@ -171,6 +223,16 @@ class PartitionQuery:
     INSERT INTO {a}
     SELECT {b}
     FROM {c};
+  """
+
+  delete_move = """
+    WITH deleted_rows AS (
+      DELETE FROM {a}
+      RETURNING *
+    )
+    INSERT INTO {b}
+    SELECT *
+    FROM deleted_rows;
   """
 
   ## SELECT
@@ -220,6 +282,15 @@ class PartitionQuery:
     select exists (
       select * from {a} limit 1
     ) as has_data;
+  """
+
+  check_index_exists = """
+    SELECT EXISTS (
+      SELECT 1
+      FROM pg_indexes
+      WHERE schemaname = '{a}'
+      AND indexname = '{b}'
+    );
   """
 
   check_table_exists = """
@@ -273,6 +344,8 @@ class PartitionQuery:
   get_min_table = "SELECT min({a}) FROM {b} LIMIT 1;"
 
   get_max_table = "SELECT max({a}) FROM {b} LIMIT 1;"
+
+  get_min_max_table = "SELECT MIN({a}), MAX({a}) FROM {b};"
 
   get_max_with_coalesce = "SELECT COALESCE(MAX({a}), 0) FROM {b};"
 
@@ -335,6 +408,14 @@ class PartitionQuery:
   drop_table = 'DROP TABLE "{a}".{b};'
 
   drop_table_cascade = "DROP TABLE {a} CASCADE;"
+
+  drop_view_alter_name = """
+
+    DROP VIEW IF EXISTS {a};
+
+    ALTER TABLE {b} RENAME TO {a};
+
+  """
 
   ## SET
 

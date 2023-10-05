@@ -26,12 +26,13 @@
     there is no data left in the default partition.
 """
 import os
+from multiprocessing import Process
 
 from psycopg2 import Error
 from sshtunnel import BaseSSHTunnelForwarderError, SSHTunnelForwarder
 
 from common.common import PartitionCommon
-from common.wrapper import background, get_config_n_secret
+from common.wrapper import get_config_n_secret
 from db.db import get_db
 from tunnel.tunnel import get_tunnel
 
@@ -57,7 +58,7 @@ class YearlyPartition(PartitionCommon):
       a=table["name"], b="old"
     )
     create_table = self.create_partition_of_table.format(
-      a=table["name"], b=year, c=year + 1
+      a=f"{table['name']}_{year}", b=table["name"], c=year, d=year + 1
     )
     change_table_owner = self.alter_table_owner.format(a=table_name)
     add_constraint_table = self.alter_table_constraint.format(
@@ -104,7 +105,6 @@ class YearlyPartition(PartitionCommon):
         logger, table, year, cur, table_name, colname
       )
 
-  @background
   def yearly_partition(self, table, database_config, application_name, event):
     try:
       table = event["table"]
@@ -191,7 +191,12 @@ class YearlyPartition(PartitionCommon):
       "table": table,
       "year": 2017,
     }
-    self.yearly_partition(table, database_config, application_name, event)
+    p = Process(
+      target=self.yearly_partition,
+      args=(table, database_config, application_name, event),
+    )
+
+    return p
 
 
 if __name__ == "__main__":

@@ -41,6 +41,10 @@ class CheckBlocker(PartitionCommon):
 
     while True:
       cur = conn.cursor()
+
+      self.logger.info("Insert data")
+      conn.commit()
+
       cur.execute(self.get_blocking_query)
       blocker = cur.fetchall()
       self.logger.debug(blocker)

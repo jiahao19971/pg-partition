@@ -36,6 +36,10 @@ class PartitionCommon(PartitionQuery):
     No returns
   """
 
+  def __init__(self):
+    super().__init__()
+    self.n_of_batch_default = self.batch_size()
+
   def reverse_check_table_partition(self, table, cur):
     checker = self.table_check.format(a=table["name"], b=table["schema"])
     cur.execute(checker)
@@ -186,3 +190,35 @@ class PartitionCommon(PartitionQuery):
       colname.append(columnname)
 
     return collist, colname
+
+  def batch_size(self):
+    n_of_batch_default = 1000
+    try:
+      batch = (
+        int(os.environ["BATCH_SIZE"])
+        if "BATCH_SIZE" in os.environ
+        else n_of_batch_default
+      )
+    except ValueError:
+      self.logger.debug.debug(
+        f"BATCH_SIZE is not an integer, defaulting to {n_of_batch_default}"
+      )
+      batch = n_of_batch_default
+
+    return batch
+
+  def create_trigger_column(self, column):
+    insert_col = []
+    value_col = []
+    update_col = []
+    update_val_col = []
+    for col in column.keys():
+      update_col.append(col)
+      if "default" not in column[col].lower():
+        insert_col.append(col)
+        value_col.append(f"NEW.{col}")
+        update_val_col.append(f"NEW.{col}")
+      else:
+        update_val_col.append(f"OLD.{col}")
+
+    return insert_col, value_col, update_col, update_val_col
