@@ -33,6 +33,7 @@
 import os
 from multiprocessing import Process
 
+import timeout_decorator
 from psycopg2 import Error
 from sshtunnel import BaseSSHTunnelForwarderError, SSHTunnelForwarder
 
@@ -72,9 +73,6 @@ class MicrobatchMigration(PartitionCommon):
     get_latest_id_from_child_table = self.get_max_table_new.format(
       a=table["pkey"], b=child_table
     )
-    # self.get_max_with_coalesce.format(
-    #   a=table["pkey"], b=child_table
-    # )
 
     cur.execute(get_latest_id_from_child_table)
 
@@ -441,6 +439,52 @@ class MicrobatchMigration(PartitionCommon):
 
     conn.commit()
 
+  @timeout_decorator.timeout(5, timeout_exception=StopIteration)
+  def get_max_parent_id(self, table, cur, wschema_parent_table, year):
+    get_max_condi = self.get_max_conditional_table_new.format(
+      a=table["pkey"],
+      b=wschema_parent_table,
+      c=table["partition"],
+      d=year,
+      e=year + 1,
+    )
+    cur.execute(get_max_condi)
+
+    max_id_old = cur.fetchone()[0]
+
+    return max_id_old
+
+  def batch_get_max_parent_id(self, logger, table, parent_table, year, cur):
+    batch_size = 1000000  # Using 1 million as default
+    offset = 0
+    max_id = -1
+
+    while True:
+      query = f"""
+        SELECT {table["pkey"]}
+        FROM {parent_table}
+        WHERE {table["partition"]} >= '{year}-01-01 00:00:00'
+          AND {table["partition"]} < '{year + 1}-01-01 00:00:00'
+        ORDER BY {table["pkey"]}
+        LIMIT {batch_size}
+        OFFSET {offset};
+      """
+
+      cur.execute(query)
+      for row in cur.fetchall():
+        id_value = row[0]
+        if id_value > max_id:
+          max_id = id_value
+
+      logger.debug(f"Table Max id in batch: {max_id}")
+
+      offset += batch_size
+
+      if cur.rowcount < batch_size:
+        break
+
+    return max_id
+
   # @background
   def microbatching(self, table, database_config, application_name, event):
     try:
@@ -549,16 +593,14 @@ class MicrobatchMigration(PartitionCommon):
               max_id = max_id[0]
 
             logger.info(f"Getting parent table max id for year: {year}")
-            get_max_condi = self.get_max_conditional_table_new.format(
-              a=table["pkey"],
-              b=wschema_parent_table,
-              c=table["partition"],
-              d=i,
-              e=i + 1,
-            )
-            cur.execute(get_max_condi)
-
-            max_id_old = cur.fetchone()[0]
+            try:
+              max_id_old = self.get_max_parent_id(
+                table, cur, wschema_parent_table, year
+              )
+            except StopIteration:
+              max_id_old = self.batch_get_max_parent_id(
+                logger, table, parent_table, year, cur
+              )
 
             if max_id_old == max_id:
               logger.info(f"Table {table['name']}_{i} already exist")
