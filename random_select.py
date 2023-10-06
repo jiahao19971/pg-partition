@@ -5,6 +5,7 @@
 """
 import time
 
+import timeout_decorator
 from dotenv import load_dotenv
 
 from common.common import PartitionCommon
@@ -27,6 +28,20 @@ class RandomInsert(PartitionCommon):
     [list]: [blocked query]
   """
 
+  @timeout_decorator.timeout(10, timeout_exception=StopIteration)
+  def get_data(self, cur):
+    cur.execute(
+      """
+        SELECT * FROM "singapore".versions
+        WHERE item_id = 100 AND item_type = 'BankInfo'
+          ORDER BY created_at DESC;
+      """
+    )
+
+    data = cur.fetchall()
+
+    return data
+
   @get_config_n_secret
   def main(self, table=None, database_config=None, application_name=None):
     db_identifier = database_config["db_identifier"]
@@ -44,20 +59,12 @@ class RandomInsert(PartitionCommon):
       cur = conn.cursor()
       self.logger.debug("Random select")
 
-      cur.execute(
-        f"""
-        SELECT * FROM "singapore".versions WHERE id = {current_id};
-      """
-      )
-
-      data = cur.fetchall()
-
-      if len(data) > 1:
-        self.logger.info(data)
-        self.logger.info("Found duplicate data")
-      elif len(data) == 0:
-        self.logger.info(f"current_id not found: {current_id}")
-
+      try:
+        data = self.get_data(cur)
+        if len(data) == 0:
+          self.logger.info("No data found in db")
+      except StopIteration:
+        self.logger.info("Query exceed 10 seconds")
       conn.close()
       self.logger.debug("Sleeping for 60 seconds")
       time.sleep(60)

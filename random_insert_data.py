@@ -50,7 +50,7 @@ class RandomInsert(PartitionCommon):
           (item_type, item_id, event, object, created_at, object_changes)
         VALUES (
           'BankInfo',
-          {i},
+          100,
           'update',
           '---
             id: 40

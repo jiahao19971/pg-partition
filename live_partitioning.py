@@ -439,7 +439,7 @@ class MicrobatchMigration(PartitionCommon):
 
     conn.commit()
 
-  @timeout_decorator.timeout(5, timeout_exception=StopIteration)
+  @timeout_decorator.timeout(10, timeout_exception=StopIteration)
   def get_max_parent_id(self, table, cur, wschema_parent_table, year):
     get_max_condi = self.get_max_conditional_table_new.format(
       a=table["pkey"],
