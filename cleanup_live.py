@@ -39,12 +39,12 @@ class CompletionMigration(MicrobatchMigration):
       server = get_tunnel(database_config)
       conn = get_db(server, database_config, application_name)
 
-      insert_col = []
-      value_col = []
-      for col in table["column"].keys():
-        if "default" not in table["column"][col].lower():
-          insert_col.append(col)
-          value_col.append(f"NEW.{col}")
+      (
+        insert_col,
+        value_col,
+        update_col,
+        update_val_col,
+      ) = self.create_trigger_column(table["column"])
 
       conn = conn.connect()
       logger.debug(f"Connected: {db_identifier}")
@@ -70,25 +70,35 @@ class CompletionMigration(MicrobatchMigration):
       new_partition_parent = f'"{table["schema"]}".{table["name"]}_partitioned'
       parent_table = f'"{table["schema"]}".{table["name"]}_old'
 
-      get_latest_id_from_table = self.get_max_with_coalesce.format(
+      get_latest_id_from_table = self.get_max_table_new.format(
         a=table["pkey"], b=parent_table
       )
 
       logger.info(f"Get latest id from parent table: {parent_table}")
       cur.execute(get_latest_id_from_table)
 
-      last_processed_id = cur.fetchone()[0]
+      last_processed_id = cur.fetchone()
+      if last_processed_id is None:
+        last_processed_id = 0
+      else:
+        last_processed_id = last_processed_id[0]
+
       logger.debug(f"Last processed id for {parent_table}: {last_processed_id}")
 
       logger.info(
         f"Get latest max id from partitioned table: {new_partition_parent}"
       )
-      get_latest_max_id = self.get_max_with_coalesce.format(
+      get_latest_max_id = self.get_max_table_new.format(
         a=table["pkey"], b=new_partition_parent
       )
       cur.execute(get_latest_max_id)
 
-      parent_max_id = cur.fetchone()[0]
+      parent_max_id = cur.fetchone()
+      if parent_max_id is None:
+        parent_max_id = 0
+      else:
+        parent_max_id = parent_max_id[0]
+
       logger.debug(
         f"Last processed id for {new_partition_parent}: {parent_max_id}"
       )
@@ -98,33 +108,17 @@ class CompletionMigration(MicrobatchMigration):
         logger.info("Skipping table for completion step")
         return
 
-      cur.execute(
-        f"""
-        CREATE OR REPLACE FUNCTION move_to_partitioned()
-          RETURNS trigger AS
-          $$
-          BEGIN
-            IF TG_OP = 'INSERT' THEN
-              INSERT INTO {new_partition_parent} ({','.join(insert_col)})
-                VALUES ({','.join(value_col)});
-            END IF;
-          RETURN NEW;
-          END;
-          $$
-          LANGUAGE 'plpgsql';
-
-        DO
-          $$BEGIN
-            CREATE TRIGGER view_trigger
-              INSTEAD OF INSERT OR UPDATE OR DELETE ON {table['name']}
-              FOR EACH ROW
-              EXECUTE FUNCTION move_to_partitioned();
-          EXCEPTION
-            WHEN duplicate_object THEN
-                NULL;
-          END;$$;
-      """
+      create_moving_data = self.create_partition_function_and_trigger.format(
+        a=new_partition_parent,
+        b=",".join(insert_col),
+        c=",".join(value_col),
+        d=table["pkey"],
+        e=",".join(update_col),
+        f=",".join(update_val_col),
+        g=table["name"],
       )
+
+      cur.execute(create_moving_data)
 
       cur.execute(
         f"""

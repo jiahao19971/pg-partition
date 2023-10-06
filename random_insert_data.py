@@ -15,9 +15,9 @@ from tunnel.tunnel import get_tunnel
 load_dotenv()
 
 
-class CheckBlocker(PartitionCommon):
+class RandomInsert(PartitionCommon):
   """
-  CheckBlocker checked the database if there is any
+  RandomInsert checked the database if there is any
   blocked query.
 
   Args:
@@ -34,25 +34,49 @@ class CheckBlocker(PartitionCommon):
 
     server = get_tunnel(database_config)
 
-    n = 0
+    i = 0
+
     while True:
       conn = get_db(server, database_config, application_name)
       conn = conn.connect()
       self.logger.debug(f"Connected: {db_identifier}")
       cur = conn.cursor()
-      cur.execute(self.get_blocking_query)
-      blocker = cur.fetchall()
-      if len(blocker) > 0:
-        n += 1
-        self.logger.info(f"Blocker found: {n}")
-        self.logger.info(blocker)
-        self.logger.info("Found blocking query")
-
+      current_time = time.strftime("%H:%M:%S", time.localtime())
+      cur = conn.cursor()
+      self.logger.debug("Inserting data to db")
+      cur.execute(
+        f"""
+        INSERT INTO "singapore".versions
+          (item_type, item_id, event, object, created_at, object_changes)
+        VALUES (
+          'BankInfo',
+          {i},
+          'update',
+          '---
+            id: 40
+            name: Intesa Sanpaolo S.P.A. SG
+            swift_code: BCITSGSG
+            created_at: 2017-11-20 02:41:28.702076000 Z
+            account_number_length:
+            bank_code_string:
+            bank_code: 8350
+            ',
+            '2023-11-25 {current_time}'
+            ,
+            '---
+            bank_code_string:
+            -
+            - "8350"
+            ');
+      """
+      )
       conn.commit()
       conn.close()
-      self.logger.debug("Sleeping for 5 seconds")
-      time.sleep(5)
+      self.logger.debug("Sleeping for 10 seconds")
+      time.sleep(10)
+
+      i += 1
 
 
 if __name__ == "__main__":
-  CheckBlocker().main()
+  RandomInsert().main()

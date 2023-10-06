@@ -15,9 +15,9 @@ from tunnel.tunnel import get_tunnel
 load_dotenv()
 
 
-class CheckBlocker(PartitionCommon):
+class RandomInsert(PartitionCommon):
   """
-  CheckBlocker checked the database if there is any
+  RandomInsert checked the database if there is any
   blocked query.
 
   Args:
@@ -34,25 +34,36 @@ class CheckBlocker(PartitionCommon):
 
     server = get_tunnel(database_config)
 
-    n = 0
+    i = 0
+    current_id = 528921960
+
     while True:
       conn = get_db(server, database_config, application_name)
       conn = conn.connect()
       self.logger.debug(f"Connected: {db_identifier}")
       cur = conn.cursor()
-      cur.execute(self.get_blocking_query)
-      blocker = cur.fetchall()
-      if len(blocker) > 0:
-        n += 1
-        self.logger.info(f"Blocker found: {n}")
-        self.logger.info(blocker)
-        self.logger.info("Found blocking query")
+      self.logger.debug("Random select")
 
-      conn.commit()
+      cur.execute(
+        f"""
+        SELECT * FROM "singapore".versions WHERE id = {current_id};
+      """
+      )
+
+      data = cur.fetchall()
+
+      if len(data) > 1:
+        self.logger.info(data)
+        self.logger.info("Found duplicate data")
+      elif len(data) == 0:
+        self.logger.info(f"current_id not found: {current_id}")
+
       conn.close()
-      self.logger.debug("Sleeping for 5 seconds")
-      time.sleep(5)
+      self.logger.debug("Sleeping for 60 seconds")
+      time.sleep(60)
+      i += 1
+      current_id += 1
 
 
 if __name__ == "__main__":
-  CheckBlocker().main()
+  RandomInsert().main()
