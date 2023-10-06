@@ -48,7 +48,7 @@ class VacuumDB(PartitionCommon):
 
     return user_config
 
-  def run(self, table, database_config, application_name):
+  def run(self, database_config, application_name):
     db_identifier = database_config["db_identifier"]
     self.logger = self.logging_func(application_name=application_name)
 
@@ -103,9 +103,7 @@ class VacuumDB(PartitionCommon):
 
   @get_config_n_secret
   def main(self, table=None, database_config=None, application_name=None):
-    p = Process(
-      target=self.run, args=(table, database_config, application_name)
-    )
+    p = Process(target=self.run, args=(database_config, application_name))
 
     return p
 
