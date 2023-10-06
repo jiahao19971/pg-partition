@@ -3,6 +3,7 @@
     It utilize psycopy2 to connect to the database and execute the query
     Additional feature: it is able to perform tunneling to the database
 """
+import random
 import time
 
 import timeout_decorator
@@ -30,10 +31,19 @@ class RandomInsert(PartitionCommon):
 
   @timeout_decorator.timeout(10, timeout_exception=StopIteration)
   def get_data(self, cur):
+    random_stuff = [
+      {"item_id": "100", "item_type": "BankInfo"},
+      {"item_type": "Transaction", "item_id": "262031826"},
+      {"item_type": "ReservationSet", "item_id": "4481120"},
+      {"item_type": "FavePayment", "item_id": "44979638"},
+    ]
+
+    random_num = random.randint(0, len(random_stuff) - 1)
     cur.execute(
-      """
+      f"""
         SELECT * FROM "singapore".versions
-        WHERE item_id = 100 AND item_type = 'BankInfo'
+        WHERE item_id = {random_stuff[random_num]['item_id']}
+        AND item_type = '{random_stuff[random_num]['item_type']}'
           ORDER BY created_at DESC;
       """
     )
@@ -50,7 +60,6 @@ class RandomInsert(PartitionCommon):
     server = get_tunnel(database_config)
 
     i = 0
-    current_id = 528921960
 
     while True:
       conn = get_db(server, database_config, application_name)
@@ -69,7 +78,6 @@ class RandomInsert(PartitionCommon):
       self.logger.debug("Sleeping for 60 seconds")
       time.sleep(60)
       i += 1
-      current_id += 1
 
 
 if __name__ == "__main__":
