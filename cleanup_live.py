@@ -139,6 +139,7 @@ class CompletionMigration(MicrobatchMigration):
       )
 
       conn.commit()
+      conn.close()
     except BaseSSHTunnelForwarderError as e:
       self.logger.error(f"{db_identifier}: {e}")
       conn.rollback()
