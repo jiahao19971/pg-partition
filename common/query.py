@@ -347,12 +347,23 @@ class PartitionQuery:
 
   get_min_max_table = "SELECT MIN({a}), MAX({a}) FROM {b};"
 
+  get_min_table_new = "SELECT {a} FROM {b} ORDER BY {a} ASC LIMIT 1;"
+
+  get_max_table_new = "SELECT {a} FROM {b} ORDER BY {a} DESC LIMIT 1;"
+
   get_max_with_coalesce = "SELECT COALESCE(MAX({a}), 0) FROM {b};"
 
   get_max_conditional_table = """
     SELECT max({a}) FROM {b}
       WHERE {c} >= '{d}-01-01 00:00:00' AND
       {c} < '{e}-01-01 00:00:00';
+  """
+
+  get_max_conditional_table_new = """
+    SELECT {a} FROM {b}
+     WHERE {c} >= '{d}-01-01 00:00:00' AND
+      {c} < '{e}-01-01 00:00:00'
+      ORDER BY {a} DESC LIMIT 1;
   """
 
   get_order_by_limit_1 = "SELECT {a} FROM {b} ORDER BY {c} {d} LIMIT 1;"

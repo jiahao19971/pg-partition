@@ -13,7 +13,7 @@ from sshtunnel import BaseSSHTunnelForwarderError, SSHTunnelForwarder
 
 from common.wrapper import get_config_n_secret
 from db.db import get_db
-from microbatching import MicrobatchMigration
+from live_partitioning import MicrobatchMigration
 from tunnel.tunnel import get_tunnel
 
 
@@ -71,55 +71,57 @@ class RollbackMigration(MicrobatchMigration):
 
       conn.commit()
 
-      logger.info("Get min and max id from table")
-      get_min_max = self.get_min_max_table.format(
-        a=table["pkey"], b=parent_table
-      )
+      check_old_row = self.check_table_row_exists.format(a=parent_table)
 
-      cur.execute(get_min_max)
+      cur.execute(check_old_row)
 
-      min_max = cur.fetchone()
-
-      logger.info(f"Get date with min year id from {parent_table}")
-      get_min_year_with_id = self.get_table_custom.format(
-        a=table["partition"],
-        b=parent_table,
-        c=table["pkey"],
-        d=min_max[0],
-      )
-      cur.execute(get_min_year_with_id)
-
-      get_min_date = cur.fetchone()[0].year
-
-      logger.info(f"Get date with max year id from {parent_table}")
-      get_max_year_with_id = self.get_table_custom.format(
-        a=table["partition"],
-        b=parent_table,
-        c=table["pkey"],
-        d=min_max[1],
-      )
-      cur.execute(get_max_year_with_id)
-
-      get_max_date = cur.fetchone()[0].year
+      old_row = cur.fetchone()[0]
 
       years = []
-      for i in range(get_min_date, get_max_date + 1):
-        years.append(i)
-
-        logger.info(f"Detach year {i} from {table['name']}")
-        detach_partition = self.detach_partition_new.format(
-          a=table["name"], b=f"{table['name']}_{i}"
+      if old_row:
+        (
+          get_min_date,
+          get_max_date,
+        ) = self.get_min_max_data_from_parent_partition(
+          logger, table, parent_table, cur
         )
-        cur.execute(detach_partition)
 
-        conn.commit()
+        for i in range(get_min_date, get_max_date + 1):
+          years.append(i)
 
-      move_rows = self.delete_move.format(
-        a=default_table,
-        b=parent_table,
+          logger.info(f"Detach year {i} from {table['name']}")
+          detach_partition = self.detach_partition_new.format(
+            a=table["name"], b=f"{table['name']}_{i}"
+          )
+          cur.execute(detach_partition)
+
+          conn.commit()
+
+      logger.info(f"Delete rows from {default_table} if exist")
+      check_default_exist = self.check_table_exists.format(
+        a=f"{table['name']}_default", b=f"{table['schema']}"
       )
 
-      cur.execute(move_rows)
+      cur.execute(check_default_exist)
+
+      default_exist = cur.fetchone()[0]
+
+      if default_exist:
+        default_table_row_exist = self.check_table_row_exists.format(
+          a=default_table
+        )
+
+        cur.execute(default_table_row_exist)
+
+        default_row = cur.fetchone()[0]
+
+        if default_row:
+          move_rows = self.delete_move.format(
+            a=default_table,
+            b=parent_table,
+          )
+
+          cur.execute(move_rows)
 
       attach_old = self.attach_table_as_default_partition.format(
         a=table["name"], b=parent_table

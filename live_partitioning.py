@@ -68,17 +68,26 @@ class MicrobatchMigration(PartitionCommon):
   ):
 
     logger.info("Get latest id from child table")
-    get_latest_id_from_child_table = self.get_max_with_coalesce.format(
+
+    get_latest_id_from_child_table = self.get_max_table_new.format(
       a=table["pkey"], b=child_table
     )
+    # self.get_max_with_coalesce.format(
+    #   a=table["pkey"], b=child_table
+    # )
 
     cur.execute(get_latest_id_from_child_table)
 
-    last_processed_id = cur.fetchone()[0]
+    last_processed_id = cur.fetchone()
+
+    if last_processed_id is None:
+      last_processed_id = 0
+    else:
+      last_processed_id = last_processed_id[0]
 
     while True:
       logger.info("Get latest max id from parent table")
-      get_latest_max_id = self.get_max_conditional_table.format(
+      get_latest_max_id = self.get_max_conditional_table_new.format(
         a=table["pkey"],
         b=parent_table,
         c=table["partition"],
@@ -112,14 +121,20 @@ class MicrobatchMigration(PartitionCommon):
 
       conn.commit()
 
-      get_last_id_from_child_table = self.get_max_table.format(
+      get_last_id_from_child_table = self.get_max_table_new.format(
         a=table["pkey"], b=child_table
       )
 
       logger.info("Get last inserted id from child table")
       cur.execute(get_last_id_from_child_table)
 
-      last_inserted_id = cur.fetchone()[0]
+      last_inserted_id = cur.fetchone()
+
+      if last_inserted_id is None:
+        last_inserted_id = 0
+      else:
+        last_inserted_id = last_inserted_id[0]
+
       logger.info(f"Last inserted id from child table: {last_inserted_id}")
       logger.info(f"Parent max id from parent table: {parent_max_id}")
 
@@ -185,7 +200,15 @@ class MicrobatchMigration(PartitionCommon):
 
     old_exist = cur.fetchone()[0]
 
-    return old_exist
+    if old_exist:
+      logger.info(f"Check if data exist in old table: {parent_table}")
+      check_old_data_exist = self.check_table_row_exists.format(a=parent_table)
+
+      cur.execute(check_old_data_exist)
+
+      row_exists = cur.fetchone()[0]
+
+      return row_exists
 
   def check_if_old_is_partition(self, logger, cur, table, wschema_parent_table):
     logger.info("Check if old table is part the partition")
@@ -301,14 +324,19 @@ class MicrobatchMigration(PartitionCommon):
     if check_child_exist is False:
       last_inserted_id = 0
     else:
-      get_last_id_from_child_table = self.get_max_table.format(
+      get_last_id_from_child_table = self.get_max_table_new.format(
         a=table["pkey"], b=child_table
       )
 
       logger.info("Get last inserted id from child table")
       cur.execute(get_last_id_from_child_table)
 
-      last_inserted_id = cur.fetchone()[0]
+      last_inserted_id = cur.fetchone()
+
+      if last_inserted_id is None:
+        last_inserted_id = 0
+      else:
+        last_inserted_id = last_inserted_id[0]
 
     logger.info(
       f"Create a view for {table['name']} with old and partitioned table"
@@ -341,29 +369,33 @@ class MicrobatchMigration(PartitionCommon):
     self, logger, table, parent_table, cur
   ):
     logger.info("Get min and max of parent_table")
-    get_min_max = self.get_min_max_table.format(a=table["pkey"], b=parent_table)
 
-    cur.execute(get_min_max)
+    get_min = self.get_min_table_new.format(a=table["pkey"], b=parent_table)
 
-    min_max = cur.fetchone()
+    cur.execute(get_min)
+
+    minimum = cur.fetchone()[0]
 
     logger.info(f"Get date with min year id from {parent_table}")
     get_min_year_with_id = self.get_table_custom.format(
       a=table["partition"],
       b=parent_table,
       c=table["pkey"],
-      d=min_max[0],
+      d=minimum,
     )
     cur.execute(get_min_year_with_id)
 
     get_min_date = cur.fetchone()[0].year
 
+    get_max = self.get_max_table_new.format(a=table["pkey"], b=parent_table)
+
+    cur.execute(get_max)
+
+    maximum = cur.fetchone()[0]
+
     logger.info(f"Get date with max year id from {parent_table}")
     get_max_year_with_id = self.get_table_custom.format(
-      a=table["partition"],
-      b=parent_table,
-      c=table["pkey"],
-      d=min_max[1],
+      a=table["partition"], b=parent_table, c=table["pkey"], d=maximum
     )
     cur.execute(get_max_year_with_id)
 
@@ -493,6 +525,8 @@ class MicrobatchMigration(PartitionCommon):
 
         new_year = 2020
         for i in range(get_min_date, get_max_date + 1):
+          logger.info(f"Checking if table exist for year: {i}")
+
           check_tb_exist = self.check_table_exists.format(
             a=f"{table['name']}_{i}", b=table["schema"]
           )
@@ -502,14 +536,20 @@ class MicrobatchMigration(PartitionCommon):
           tb_exist = cur.fetchone()[0]
 
           if tb_exist:
-
-            get_max = self.get_max_table.format(
+            logger.info(f"Getting child table max id for year: {year}")
+            get_max = self.get_max_table_new.format(
               a=table["pkey"], b=f"{table['name']}_{i}"
             )
             cur.execute(get_max)
-            max_id = cur.fetchone()[0]
+            max_id = cur.fetchone()
 
-            get_max_condi = self.get_max_conditional_table.format(
+            if max_id is None:
+              max_id = 0
+            else:
+              max_id = max_id[0]
+
+            logger.info(f"Getting parent table max id for year: {year}")
+            get_max_condi = self.get_max_conditional_table_new.format(
               a=table["pkey"],
               b=wschema_parent_table,
               c=table["partition"],
