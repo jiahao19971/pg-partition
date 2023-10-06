@@ -637,6 +637,7 @@ class MicrobatchMigration(PartitionCommon):
         wschema_parent_table,
         wschema_temp_partition_table,
       )
+      conn.close()
     except BaseSSHTunnelForwarderError as e:
       self.logger.error(f"{db_identifier}: {e}")
       conn.rollback()
