@@ -207,6 +207,8 @@ class MicrobatchMigration(PartitionCommon):
       row_exists = cur.fetchone()[0]
 
       return row_exists
+    else:
+      return old_exist
 
   def check_if_old_is_partition(self, logger, cur, table, wschema_parent_table):
     logger.info("Check if old table is part the partition")
