@@ -111,6 +111,8 @@ class CompletionMigration(MicrobatchMigration):
             wschema_temp_partition_table,
           )
 
+          cur.execute(f"LOCK TABLE {parent_table} IN ACCESS EXCLUSIVE MODE;")
+
         logger.info(f"Getting child table max id for year: {i}")
         get_max = self.get_max_table_new.format(
           a=table["pkey"], b=f"{table['name']}_{i}"
@@ -134,6 +136,8 @@ class CompletionMigration(MicrobatchMigration):
         if max_id_old == max_id:
           logger.info(f"Table {table['name']}_{i} is up to date")
           continue
+        else:
+          break
 
       get_latest_id_from_table = self.get_max_table_new.format(
         a=table["pkey"], b=parent_table
