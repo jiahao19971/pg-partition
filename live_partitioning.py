@@ -580,7 +580,7 @@ class MicrobatchMigration(PartitionCommon):
           tb_exist = cur.fetchone()[0]
 
           if tb_exist:
-            logger.info(f"Getting child table max id for year: {year}")
+            logger.info(f"Getting child table max id for year: {i}")
             get_max = self.get_max_table_new.format(
               a=table["pkey"], b=f"{table['name']}_{i}"
             )
@@ -592,14 +592,14 @@ class MicrobatchMigration(PartitionCommon):
             else:
               max_id = max_id[0]
 
-            logger.info(f"Getting parent table max id for year: {year}")
+            logger.info(f"Getting parent table max id for year: {i}")
             try:
               max_id_old = self.get_max_parent_id(
-                table, cur, wschema_parent_table, year
+                table, cur, wschema_parent_table, i
               )
             except StopIteration:
               max_id_old = self.batch_get_max_parent_id(
-                logger, table, parent_table, year, cur
+                logger, table, parent_table, i, cur
               )
 
             if max_id_old == max_id:
