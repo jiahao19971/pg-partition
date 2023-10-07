@@ -108,7 +108,7 @@ class PartitionQuery:
   """
 
   create_partition_function_and_trigger = """
-    CREATE OR REPLACE FUNCTION move_to_partitioned()
+    CREATE OR REPLACE FUNCTION {h}()
       RETURNS trigger AS
       $$
       BEGIN
@@ -132,7 +132,7 @@ class PartitionQuery:
         CREATE TRIGGER view_trigger
           INSTEAD OF INSERT OR UPDATE OR DELETE ON {g}
           FOR EACH ROW
-          EXECUTE FUNCTION move_to_partitioned();
+          EXECUTE FUNCTION {h}();
       EXCEPTION
         WHEN duplicate_object THEN
             NULL;

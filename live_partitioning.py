@@ -360,6 +360,7 @@ class MicrobatchMigration(PartitionCommon):
       e=",".join(update_col),
       f=",".join(update_val_col),
       g=table["name"],
+      h=f"{table['name']}_move_to_partitioned",
     )
     cur.execute(create_moving_data)
 
@@ -442,10 +443,10 @@ class MicrobatchMigration(PartitionCommon):
     conn.commit()
 
   @timeout_decorator.timeout(10, timeout_exception=StopIteration)
-  def get_max_parent_id(self, table, cur, wschema_parent_table, year):
+  def get_max_parent_id(self, table, cur, parent_table, year):
     get_max_condi = self.get_max_conditional_table_new.format(
       a=table["pkey"],
-      b=wschema_parent_table,
+      b=parent_table,
       c=table["partition"],
       d=year,
       e=year + 1,
@@ -570,7 +571,7 @@ class MicrobatchMigration(PartitionCommon):
         )
 
         new_year = 2020
-        for i in range(get_min_date, get_max_date + 1):
+        for i in range(get_min_date, get_max_date):
           logger.info(f"Checking if table exist for year: {i}")
 
           check_tb_exist = self.check_table_exists.format(
@@ -596,9 +597,7 @@ class MicrobatchMigration(PartitionCommon):
 
             logger.info(f"Getting parent table max id for year: {i}")
             try:
-              max_id_old = self.get_max_parent_id(
-                table, cur, wschema_parent_table, i
-              )
+              max_id_old = self.get_max_parent_id(table, cur, parent_table, i)
             except StopIteration:
               max_id_old = self.batch_get_max_parent_id(
                 logger, table, parent_table, i, cur
