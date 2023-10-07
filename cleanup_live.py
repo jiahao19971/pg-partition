@@ -82,6 +82,10 @@ class CompletionMigration(MicrobatchMigration):
         child_table,
       ) = self.create_naming(table, year)
 
+      if get_min_date == 0 or get_max_date == 0:
+        logger.info("No data to migrate")
+        return
+
       for i in range(get_min_date, get_max_date + 1):
         if i == get_max_date:
           year = i
