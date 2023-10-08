@@ -576,7 +576,7 @@ class MicrobatchMigration(PartitionCommon):
         )
 
         new_year = 2020
-        for i in range(get_min_date, get_max_date):
+        for i in range(get_min_date, get_max_date + 1):
           logger.info(f"Checking if table exist for year: {i}")
 
           check_tb_exist = self.check_table_exists.format(
