@@ -378,9 +378,9 @@ class MicrobatchMigration(PartitionCommon):
     minimum = cur.fetchone()
 
     if minimum is None:
-      minimum = 0
-    else:
-      minimum = minimum[0]
+      return None, None
+
+    minimum = minimum[0]
 
     logger.info(f"Get date with min year id from {parent_table}")
     get_min_year_with_id = self.get_table_custom.format(
@@ -393,21 +393,11 @@ class MicrobatchMigration(PartitionCommon):
 
     get_min_date = cur.fetchone()[0].year
 
-    if get_min_date is None:
-      get_min_date = None
-    else:
-      get_min_date = get_min_date[0].year
-
     get_max = self.get_max_table_new.format(a=table["pkey"], b=parent_table)
 
     cur.execute(get_max)
 
     maximum = cur.fetchone()[0]
-
-    if maximum is None:
-      maximum = 0
-    else:
-      maximum = maximum[0]
 
     logger.info(f"Get date with max year id from {parent_table}")
     get_max_year_with_id = self.get_table_custom.format(
@@ -415,12 +405,7 @@ class MicrobatchMigration(PartitionCommon):
     )
     cur.execute(get_max_year_with_id)
 
-    get_max_date = cur.fetchone()
-
-    if get_max_date is None:
-      get_max_date = None
-    else:
-      get_max_date = get_max_date[0].year
+    get_max_date = cur.fetchone()[0].year
 
     return get_min_date, get_max_date
 
