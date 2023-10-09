@@ -214,28 +214,6 @@ class CompletionMigration(MicrobatchMigration):
       conn.close()
     finally:
       logger.info(f"Complete migration for table {table['name']}")
-      if (
-        "DEPLOYMENT" in os.environ and os.environ["DEPLOYMENT"] == "kubernetes"
-      ):
-        with subprocess.Popen(
-          ["kubectl create configmap cronjob-lock -n partitioning"],
-          stdout=subprocess.PIPE,
-          stderr=subprocess.STDOUT,
-        ) as process:
-          for line in process.stdout:
-            self.logger.debug(line.decode("utf-8").strip())
-
-          output = process.communicate()[0]
-
-          if process.returncode != 0:
-            self.logger.error(
-              f"""Command failed. Return code : {
-              process.returncode
-            }"""
-            )
-          else:
-            self.logger.info(output)
-
       if isinstance(server, SSHTunnelForwarder):
         server.stop()
 
@@ -257,3 +235,23 @@ class CompletionMigration(MicrobatchMigration):
 if __name__ == "__main__":
   batchrun = CompletionMigration()
   batchrun.main()
+
+  if "DEPLOYMENT" in os.environ and os.environ["DEPLOYMENT"] == "kubernetes":
+    with subprocess.Popen(
+      ["kubectl", "delete", "cm/cronjob-lock", "-n", "partitioning"],
+      stdout=subprocess.PIPE,
+      stderr=subprocess.STDOUT,
+    ) as process:
+      for line in process.stdout:
+        print(line.decode("utf-8").strip())
+
+      output = process.communicate()[0]
+
+      if process.returncode != 0:
+        print(
+          f"""Command failed. Return code : {
+          process.returncode
+        }"""
+        )
+      else:
+        print(output)
