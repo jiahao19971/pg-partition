@@ -31,6 +31,7 @@
     there is no data left in the default partition.
 """
 import os
+import subprocess
 from multiprocessing import Process
 
 import timeout_decorator
@@ -661,6 +662,27 @@ class MicrobatchMigration(PartitionCommon):
                 table['name']
                 } completed"""
       )
+      if (
+        "DEPLOYMENT" in os.environ and os.environ["DEPLOYMENT"] == "kubernetes"
+      ):
+        with subprocess.Popen(
+          ["kubectl create configmap cronjob-lock -n partitioning"],
+          stdout=subprocess.PIPE,
+          stderr=subprocess.STDOUT,
+        ) as process:
+          for line in process.stdout:
+            self.logger.debug(line.decode("utf-8").strip())
+
+          output = process.communicate()[0]
+
+          if process.returncode != 0:
+            self.logger.error(
+              f"""Command failed. Return code : {
+              process.returncode
+            }"""
+            )
+          else:
+            self.logger.info(output)
       if isinstance(server, SSHTunnelForwarder):
         server.stop()
 
