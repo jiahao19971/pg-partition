@@ -9,6 +9,7 @@
 """
 import os
 import re
+from multiprocessing import Process
 
 from dotenv import load_dotenv
 from psycopg2 import Error
@@ -16,7 +17,7 @@ from ruamel.yaml import YAML
 from sshtunnel import BaseSSHTunnelForwarderError, SSHTunnelForwarder
 
 from common.common import PartitionCommon
-from common.wrapper import background, get_config_n_secret
+from common.wrapper import get_config_n_secret
 from db.db import get_db
 from tunnel.tunnel import get_tunnel
 
@@ -156,7 +157,7 @@ class Partition(PartitionCommon):
 
     return index_data
 
-  @background
+  # @background
   def perform_partitioning(self, table, database_config, application_name):
     try:
       db_identifier = database_config["db_identifier"]
@@ -353,7 +354,16 @@ class Partition(PartitionCommon):
 
   @get_config_n_secret
   def main(self, table=None, database_config=None, application_name=None):
-    self.perform_partitioning(table, database_config, application_name)
+    p = Process(
+      target=self.perform_partitioning,
+      args=(
+        table,
+        database_config,
+        application_name,
+      ),
+    )
+
+    return p
 
 
 if __name__ == "__main__":

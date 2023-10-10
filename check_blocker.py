@@ -33,20 +33,25 @@ class CheckBlocker(PartitionCommon):
     self.logger = self.logging_func(application_name=application_name)
 
     server = get_tunnel(database_config)
-    conn = get_db(server, database_config, application_name)
 
-    conn = conn.connect()
-    self.logger.debug(f"Connected: {db_identifier}")
-    cur = conn.cursor()
-
+    n = 0
     while True:
+      conn = get_db(server, database_config, application_name)
+      conn = conn.connect()
+      self.logger.debug(f"Connected: {db_identifier}")
       cur = conn.cursor()
       cur.execute(self.get_blocking_query)
       blocker = cur.fetchall()
-      self.logger.debug(blocker)
+      if len(blocker) > 0:
+        n += 1
+        self.logger.info(f"Blocker found: {n}")
+        self.logger.info(blocker)
+        self.logger.info("Found blocking query")
+
       conn.commit()
-      self.logger.debug("Sleeping for 60 seconds")
-      time.sleep(60)
+      conn.close()
+      self.logger.debug("Sleeping for 5 seconds")
+      time.sleep(5)
 
 
 if __name__ == "__main__":

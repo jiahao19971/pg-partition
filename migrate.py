@@ -10,6 +10,7 @@ import os
 import subprocess
 import sys
 from functools import partial
+from multiprocessing import Process
 
 import boto3
 import botocore
@@ -359,7 +360,16 @@ class MigratePartition(PartitionCommon):
   @get_config_n_secret
   def main(self, table=None, database_config=None, application_name=None):
     self._get_aws_secret(database_config)
-    self.migrate_run(table, database_config, application_name)
+    p = Process(
+      target=self.migrate_run,
+      args=(
+        table,
+        database_config,
+        application_name,
+      ),
+    )
+
+    return p
 
 
 if __name__ == "__main__":

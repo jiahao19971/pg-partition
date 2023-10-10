@@ -34,19 +34,23 @@ class PartitionQuery:
 
   ## Create
   create_normal_table = """
-    CREATE TABLE {a} ({b},
+    CREATE TABLE IF NOT EXISTS {a} ({b},
       primary key ({c})
     )
   """
 
+  create_default_partition_table = """
+    CREATE TABLE IF NOT EXISTS {a} PARTITION OF {b} DEFAULT;
+  """
+
   create_table_with_partitioning = (
-    "CREATE TABLE {a} ({b}) PARTITION BY RANGE ({c});"
+    "CREATE TABLE IF NOT EXISTS {a} ({b}) PARTITION BY RANGE ({c});"
   )
 
   create_partition_of_table = """
-    CREATE TABLE {a}_{b}
-    PARTITION OF {a} FOR VALUES
-    FROM ('{b}-01-01 00:00:00') TO ('{c}-01-01 00:00:00');
+    CREATE TABLE IF NOT EXISTS {a}
+    PARTITION OF {b} FOR VALUES
+    FROM ('{c}-01-01 00:00:00') TO ('{d}-01-01 00:00:00');
   """
 
   create_aws_s3_extension = "CREATE EXTENSION IF NOT EXISTS aws_s3 CASCADE;"
@@ -58,7 +62,7 @@ class PartitionQuery:
   """
 
   create_unique_index_concurrently = """
-    CREATE UNIQUE INDEX CONCURRENTLY {a}
+    CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS {a}
     ON {b}
     USING btree ({c}, {d});
   """
@@ -84,12 +88,63 @@ class PartitionQuery:
     select setval('"{a}".{b}', {c}, true);
   """
 
+  create_inherit_table = """
+    CREATE TABLE IF NOT EXISTS {a}
+      (LIKE {b} INCLUDING ALL);
+  """
+
+  create_view_with_where = """
+    CREATE OR REPLACE VIEW {a} AS
+      SELECT
+          *
+      FROM
+          {b}
+      WHERE {c} > {d}
+      UNION ALL
+      SELECT
+          *
+      FROM
+          {e};
+  """
+
+  create_partition_function_and_trigger = """
+    CREATE OR REPLACE FUNCTION {h}()
+      RETURNS trigger AS
+      $$
+      BEGIN
+        IF TG_OP = 'INSERT' THEN
+          INSERT INTO {a} ({b})
+            VALUES ({c});
+        ELSEIF TG_OP = 'UPDATE' THEN
+          DELETE FROM {a} WHERE {d} = OLD.{d};
+          INSERT INTO {a} ({e})
+            VALUES ({f});
+        ELSEIF TG_OP = 'DELETE' THEN
+          DELETE FROM {a} WHERE {d} = OLD.{d};
+        END IF;
+      RETURN NEW;
+      END;
+      $$
+      LANGUAGE 'plpgsql';
+
+    DO
+      $$BEGIN
+        CREATE TRIGGER view_trigger
+          INSTEAD OF INSERT OR UPDATE OR DELETE ON {g}
+          FOR EACH ROW
+          EXECUTE FUNCTION {h}();
+      EXCEPTION
+        WHEN duplicate_object THEN
+            NULL;
+      END;$$;
+  """
+
   ## ALTER
 
-  alter_table_constraint = """
-    ALTER TABLE {a}_{b}
-    ADD CONSTRAINT {a}_{b}
-    CHECK  ({c} >= '{d}-01-01 00:00:00' AND {c} < '{e}-01-01 00:00:00');
+  alter_index_to_pkey = """
+    ALTER TABLE {a}
+    ADD CONSTRAINT {b} PRIMARY KEY
+    USING INDEX {c};
   """
 
   attach_table_as_default_partition = (
@@ -100,7 +155,7 @@ class PartitionQuery:
     ALTER TABLE {a} ATTACH PARTITION {b} FOR VALUES FROM ('{c}-01-01 00:00:00') TO ('{d}-01-01 00:00:00');
   """
 
-  detach_partition = "ALTER TABLE {a} DETACH PARTITION {a}_{b};"
+  detach_partition_new = "ALTER TABLE {a} DETACH PARTITION {b};"
 
   rename_table = "ALTER TABLE {a} RENAME TO {b};"
 
@@ -111,18 +166,6 @@ class PartitionQuery:
   alter_sequence_owned_by = "ALTER SEQUENCE IF EXISTS {a} OWNED BY {b}"
 
   alter_replica_identity = "ALTER TABLE {a} REPLICA IDENTITY FULL;"
-
-  alter_column_not_null = """
-    ALTER TABLE "{a}".{b}
-    ALTER COLUMN {c}
-    SET NOT NULL;
-  """
-
-  alter_table_drop_constraint_add_primary = """
-    ALTER TABLE "{a}".{b}
-    DROP CONSTRAINT {b}_pkey,
-    ADD PRIMARY KEY ({c}, {d})
-  """
 
   alter_index_rename = "ALTER INDEX {a} RENAME TO {b}"
 
@@ -136,20 +179,30 @@ class PartitionQuery:
 
   ## INSERT
 
-  move_rows_to_another_table = """
-      WITH moved_rows AS (
-          DELETE FROM {a}_{b} a
-          WHERE {c} >= '{d}-01-01 00:00:00' AND {c} < '{e}-01-01 00:00:00'
-          RETURNING a.*
-      )
-      INSERT INTO {a}_{d}
-      SELECT {f} FROM moved_rows;
+  microbatch_insert = """
+    INSERT INTO {a}
+    SELECT * FROM {b}
+    WHERE {g} > {c}
+    AND {d} >= '{e}-01-01 00:00:00'
+    AND {d} < '{f}-01-01 00:00:00'
+    ORDER BY {g}
+    LIMIT {h};
   """
 
   insert_data_to_table = """
     INSERT INTO {a}
     SELECT {b}
     FROM {c};
+  """
+
+  delete_move = """
+    WITH deleted_rows AS (
+      DELETE FROM {a}
+      RETURNING *
+    )
+    INSERT INTO {b}
+    SELECT *
+    FROM deleted_rows;
   """
 
   ## SELECT
@@ -194,13 +247,50 @@ class PartitionQuery:
           AND n.nspname = '{b}'
       ORDER BY 1,2;
   """
-  get_table_existence = """
-    SELECT count(*)
-    FROM information_schema.tables
-    WHERE table_schema='{a}' and table_name='{b}';
+
+  check_table_row_exists = """
+    select exists (
+      select * from {a} limit 1
+    ) as has_data;
+  """
+
+  check_index_exists = """
+    SELECT EXISTS (
+      SELECT 1
+      FROM pg_indexes
+      WHERE schemaname = '{a}'
+      AND indexname = '{b}'
+    );
+  """
+
+  check_table_exists = """
+    SELECT EXISTS (
+      SELECT 1 FROM pg_tables
+        WHERE tablename = '{a}'
+        AND schemaname = '{b}'
+      ) AS table_existence;
+  """
+
+  check_table_part_of_partition = """
+    SELECT
+      count(*)
+    FROM pg_inherits
+      JOIN pg_class parent            ON pg_inherits.inhparent = parent.oid
+      JOIN pg_class child             ON pg_inherits.inhrelid   = child.oid
+      JOIN pg_namespace nmsp_parent   ON nmsp_parent.oid  = parent.relnamespace
+      JOIN pg_namespace nmsp_child    ON nmsp_child.oid   = child.relnamespace
+    WHERE parent.relname='{a}'
+    AND nmsp_parent.nspname = '{b}'
+    AND child.relname = '{c}';
   """
 
   count_table_from_db = "SELECT count(*) FROM {a}"
+
+  get_table_custom = """
+    SELECT {a}
+      FROM {b}
+      WHERE {c} = {d}
+  """
 
   get_table_index = """
     select {a}
@@ -209,7 +299,16 @@ class PartitionQuery:
       and schemaname = '{c}';
   """
 
-  get_min_table = "SELECT min({a}) FROM {b} LIMIT 1;"
+  get_min_table_new = "SELECT {a} FROM {b} ORDER BY {a} ASC LIMIT 1;"
+
+  get_max_table_new = "SELECT {a} FROM {b} ORDER BY {a} DESC LIMIT 1;"
+
+  get_max_conditional_table_new = """
+    SELECT {a} FROM {b}
+     WHERE {c} >= '{d}-01-01 00:00:00' AND
+      {c} < '{e}-01-01 00:00:00'
+      ORDER BY {a} DESC LIMIT 1;
+  """
 
   get_order_by_limit_1 = "SELECT {a} FROM {b} ORDER BY {c} {d} LIMIT 1;"
 
@@ -259,9 +358,25 @@ class PartitionQuery:
 
   ## DROP
 
+  drop_table_if_exists = "DROP TABLE IF EXISTS {a};"
+
   drop_table = 'DROP TABLE "{a}".{b};'
 
   drop_table_cascade = "DROP TABLE {a} CASCADE;"
+
+  drop_view_alter_name = """
+
+    DROP VIEW IF EXISTS {a};
+
+    ALTER TABLE {b} RENAME TO {a};
+
+  """
+
+  drop_table_and_function = """
+    DROP TABLE IF EXISTS {a};
+
+    DROP FUNCTION IF EXISTS {b};
+  """
 
   ## SET
 
@@ -270,6 +385,18 @@ class PartitionQuery:
   ## ANALYZE
 
   analyze_table = "ANALYZE {a};"
+
+  ## DELETE
+  delete_row_from_table = """
+    DELETE FROM {a}
+      WHERE {b} >= '{c}-01-01 00:00:00'
+      AND {b} < '{d}-01-01 00:00:00';
+  """
+
+  ## LOCK
+  lock_table = """
+    LOCK TABLE {a} IN ACCESS EXCLUSIVE MODE;
+  """
 
   def __init__(self) -> None:
     self.logger = logging.getLogger("PG_Partition")

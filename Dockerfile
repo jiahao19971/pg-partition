@@ -1,5 +1,11 @@
 FROM python:3.8-alpine
 
+RUN apk update && \
+    apk add --no-cache curl ca-certificates && \
+    curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && \
+    chmod +x kubectl && \
+    mv kubectl /usr/local/bin/
+
 RUN apk add --no-cache --update \
     gcc \
     gfortran musl-dev g++ \
@@ -19,9 +25,11 @@ COPY ./db ./db
 COPY ./common ./common
 COPY ./tunnel ./tunnel
 
-COPY ./config.json config.json
-COPY ./secret.json secret.json
-COPY ./microbatching.py microbatching.py
-COPY ./yearly_partition.py yearly_partition.py
+COPY ./config.json .
+COPY ./secret.json .
+COPY ./live_partitioning.py .
+COPY ./cleanup_live.py .
+COPY ./rollback_live.py .
+COPY ./maintenance_partition.py .
 
-CMD [ "python", "microbatching.py"]
+CMD [ "python", "live_partitioning.py"]

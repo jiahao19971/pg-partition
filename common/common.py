@@ -7,6 +7,7 @@
 """
 import json
 import os
+import subprocess
 import sys
 from functools import lru_cache
 
@@ -35,6 +36,10 @@ class PartitionCommon(PartitionQuery):
   Returns:
     No returns
   """
+
+  def __init__(self):
+    super().__init__()
+    self.n_of_batch_default = self.batch_size()
 
   def reverse_check_table_partition(self, table, cur):
     checker = self.table_check.format(a=table["name"], b=table["schema"])
@@ -118,7 +123,20 @@ class PartitionCommon(PartitionQuery):
   def checker_table(self, table, cur):
     application_name = f"{table['schema']}.{table['name']}"
     logger = self.logging_func(application_name=application_name)
-    checker = self.table_check.format(a=table["name"], b=table["schema"])
+    checker = self.table_check.format(a=f'{table["name"]}', b=table["schema"])
+
+    logger.debug("Checking table if it is partition")
+    cur.execute(checker)
+    data = cur.fetchall()
+
+    return data
+
+  def checker_temp_table(self, table, cur):
+    application_name = f"{table['schema']}.{table['name']}"
+    logger = self.logging_func(application_name=application_name)
+    checker = self.table_check.format(
+      a=f'{table["name"]}_temp', b=table["schema"]
+    )
 
     logger.debug("Checking table if it is partition")
     cur.execute(checker)
@@ -128,8 +146,24 @@ class PartitionCommon(PartitionQuery):
 
   def check_table_partition(self, table, cur):
     data = self.checker_table(table, cur)
-
     partition = bool("partitioned table" not in list(data[0]))
+
+    if partition is True:
+      cur.execute(
+        f"""
+          SELECT EXISTS (
+              SELECT 1 FROM pg_tables
+              WHERE tablename = '{table["name"]}_temp'
+              AND schemaname = '{table["schema"]}'
+          ) AS table_existence;
+      """
+      )
+
+      table_exist = cur.fetchone()[0]
+
+      if table_exist is True:
+        new_data = self.checker_temp_table(table, cur)
+        partition = bool("partitioned table" not in list(new_data[0]))
 
     return partition
 
@@ -157,3 +191,56 @@ class PartitionCommon(PartitionQuery):
       colname.append(columnname)
 
     return collist, colname
+
+  def batch_size(self):
+    n_of_batch_default = 1000
+    try:
+      batch = (
+        int(os.environ["BATCH_SIZE"])
+        if "BATCH_SIZE" in os.environ
+        else n_of_batch_default
+      )
+    except ValueError:
+      self.logger.debug.debug(
+        f"BATCH_SIZE is not an integer, defaulting to {n_of_batch_default}"
+      )
+      batch = n_of_batch_default
+
+    return batch
+
+  def create_trigger_column(self, column):
+    insert_col = []
+    value_col = []
+    update_col = []
+    update_val_col = []
+    for col in column.keys():
+      update_col.append(col)
+      if "default" not in column[col].lower():
+        insert_col.append(col)
+        value_col.append(f"NEW.{col}")
+        update_val_col.append(f"NEW.{col}")
+      else:
+        update_val_col.append(f"OLD.{col}")
+
+    return insert_col, value_col, update_col, update_val_col
+
+  def cleanup_cronjob_lock(self):
+    if "DEPLOYMENT" in os.environ and os.environ["DEPLOYMENT"] == "kubernetes":
+      with subprocess.Popen(
+        ["kubectl", "delete", "cm/cronjob-lock", "-n", "partitioning"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+      ) as process:
+        for line in process.stdout:
+          self.logger.info(line.decode("utf-8").strip())
+
+        output = process.communicate()[0]
+
+        if process.returncode != 0:
+          self.logger.info(
+            f"""Command failed. Return code : {
+            process.returncode
+          }"""
+          )
+        else:
+          self.logger.info(output)

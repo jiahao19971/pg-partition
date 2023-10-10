@@ -7,6 +7,7 @@
 import os
 import subprocess
 import sys
+from multiprocessing import Process
 
 from dotenv import load_dotenv
 
@@ -47,8 +48,7 @@ class VacuumDB(PartitionCommon):
 
     return user_config
 
-  @get_config_n_secret
-  def main(self, table=None, database_config=None, application_name=None):
+  def run(self, database_config, application_name):
     db_identifier = database_config["db_identifier"]
     self.logger = self.logging_func(application_name=application_name)
 
@@ -100,6 +100,12 @@ class VacuumDB(PartitionCommon):
         self.logger.info(output)
 
     conn.close()
+
+  @get_config_n_secret
+  def main(self, table=None, database_config=None, application_name=None):
+    p = Process(target=self.run, args=(database_config, application_name))
+
+    return p
 
 
 if __name__ == "__main__":

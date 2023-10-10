@@ -31,7 +31,9 @@ def get_config_n_secret(func):
     db = secret["database"]
 
     n_of_chunks = 3
+
     for i in range(0, len(db), n_of_chunks):
+      arg = []
       for database_config in db[i : i + n_of_chunks]:
         config = self.get_config()
         for table in config["table"]:
@@ -41,7 +43,15 @@ def get_config_n_secret(func):
             f"{db_identifier}:{table['schema']}.{table['name']}"
           )
 
-          func(*args, table, database_config, application_name)
+          p = func(*args, table, database_config, application_name)
+
+          arg.append(p)
         time.sleep(1)
+
+      for p in arg:
+        p.start()
+
+      for p in arg:
+        p.join()
 
   return wrapped
