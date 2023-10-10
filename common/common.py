@@ -7,6 +7,7 @@
 """
 import json
 import os
+import subprocess
 import sys
 from functools import lru_cache
 
@@ -222,3 +223,24 @@ class PartitionCommon(PartitionQuery):
         update_val_col.append(f"OLD.{col}")
 
     return insert_col, value_col, update_col, update_val_col
+
+  def cleanup_cronjob_lock(self):
+    if "DEPLOYMENT" in os.environ and os.environ["DEPLOYMENT"] == "kubernetes":
+      with subprocess.Popen(
+        ["kubectl", "delete", "cm/cronjob-lock", "-n", "partitioning"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+      ) as process:
+        for line in process.stdout:
+          self.logger.info(line.decode("utf-8").strip())
+
+        output = process.communicate()[0]
+
+        if process.returncode != 0:
+          self.logger.info(
+            f"""Command failed. Return code : {
+            process.returncode
+          }"""
+          )
+        else:
+          self.logger.info(output)

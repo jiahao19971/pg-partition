@@ -30,8 +30,6 @@ COPY ./secret.json .
 COPY ./live_partitioning.py .
 COPY ./cleanup_live.py .
 COPY ./rollback_live.py .
-COPY ./microbatching.py .
-COPY ./partition_complete.py .
-COPY ./cleanup.py .
+COPY ./maintenance_partition.py .
 
 CMD [ "python", "live_partitioning.py"]

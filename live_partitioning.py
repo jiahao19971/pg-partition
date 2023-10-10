@@ -31,7 +31,6 @@
     there is no data left in the default partition.
 """
 import os
-import subprocess
 from multiprocessing import Process
 
 import timeout_decorator
@@ -67,6 +66,7 @@ class MicrobatchMigration(PartitionCommon):
     child_table,
     wschema_parent_table,
     wschema_temp_partition_table,
+    maintenance=False,
   ):
 
     logger.info("Get latest id from child table")
@@ -146,14 +146,16 @@ class MicrobatchMigration(PartitionCommon):
           last_inserted_id
         }"""
       )
-      update_view = self.create_view_with_where.format(
-        a=table["name"],
-        b=wschema_parent_table,
-        c=table["pkey"],
-        d=last_inserted_id,
-        e=wschema_temp_partition_table,
-      )
-      cur.execute(update_view)
+
+      if maintenance is False:
+        update_view = self.create_view_with_where.format(
+          a=table["name"],
+          b=wschema_parent_table,
+          c=table["pkey"],
+          d=last_inserted_id,
+          e=wschema_temp_partition_table,
+        )
+        cur.execute(update_view)
 
       conn.commit()
 
@@ -166,7 +168,7 @@ class MicrobatchMigration(PartitionCommon):
 
       last_processed_id = last_inserted_id
 
-  def create_naming(self, table, year):
+  def create_naming(self, table, year=2020):
     wschema_temp_partition_table = f"{table['name']}_partitioned"
     wschema_parent_table = f'{table["name"]}_old'
     wschema_child_table = f'{table["name"]}_{year}'
@@ -258,7 +260,7 @@ class MicrobatchMigration(PartitionCommon):
       )
       cur.execute(rename_table_to_temp)
 
-  def check_if_default_exists(
+  def create_default_alter_index_to_pkey(
     self,
     logger,
     cur,
@@ -408,7 +410,14 @@ class MicrobatchMigration(PartitionCommon):
 
     get_max_date = cur.fetchone()[0].year
 
-    return get_min_date, get_max_date
+    if get_max_date < get_min_date:
+      min_date = get_max_date
+      max_date = get_min_date
+    else:
+      min_date = get_min_date
+      max_date = get_max_date
+
+    return min_date, max_date
 
   def create_child_table_alter_index_to_pkey(
     self,
@@ -543,7 +552,7 @@ class MicrobatchMigration(PartitionCommon):
         wschema_temp_partition_table,
       )
 
-      self.check_if_default_exists(
+      self.create_default_alter_index_to_pkey(
         logger,
         cur,
         table,
@@ -688,23 +697,4 @@ class MicrobatchMigration(PartitionCommon):
 if __name__ == "__main__":
   batchrun = MicrobatchMigration()
   batchrun.main()
-
-  if "DEPLOYMENT" in os.environ and os.environ["DEPLOYMENT"] == "kubernetes":
-    with subprocess.Popen(
-      ["kubectl", "delete", "cm/cronjob-lock", "-n", "partitioning"],
-      stdout=subprocess.PIPE,
-      stderr=subprocess.STDOUT,
-    ) as process:
-      for line in process.stdout:
-        print(line.decode("utf-8").strip())
-
-      output = process.communicate()[0]
-
-      if process.returncode != 0:
-        print(
-          f"""Command failed. Return code : {
-          process.returncode
-        }"""
-        )
-      else:
-        print(output)
+  batchrun.cleanup_cronjob_lock()

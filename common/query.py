@@ -141,12 +141,6 @@ class PartitionQuery:
 
   ## ALTER
 
-  alter_table_constraint = """
-    ALTER TABLE {a}_{b}
-    ADD CONSTRAINT {a}_{b}
-    CHECK  ({c} >= '{d}-01-01 00:00:00' AND {c} < '{e}-01-01 00:00:00');
-  """
-
   alter_index_to_pkey = """
     ALTER TABLE {a}
     ADD CONSTRAINT {b} PRIMARY KEY
@@ -161,8 +155,6 @@ class PartitionQuery:
     ALTER TABLE {a} ATTACH PARTITION {b} FOR VALUES FROM ('{c}-01-01 00:00:00') TO ('{d}-01-01 00:00:00');
   """
 
-  detach_partition = "ALTER TABLE {a} DETACH PARTITION {a}_{b};"
-
   detach_partition_new = "ALTER TABLE {a} DETACH PARTITION {b};"
 
   rename_table = "ALTER TABLE {a} RENAME TO {b};"
@@ -175,18 +167,6 @@ class PartitionQuery:
 
   alter_replica_identity = "ALTER TABLE {a} REPLICA IDENTITY FULL;"
 
-  alter_column_not_null = """
-    ALTER TABLE "{a}".{b}
-    ALTER COLUMN {c}
-    SET NOT NULL;
-  """
-
-  alter_table_drop_constraint_add_primary = """
-    ALTER TABLE "{a}".{b}
-    DROP CONSTRAINT {b}_pkey,
-    ADD PRIMARY KEY ({c}, {d})
-  """
-
   alter_index_rename = "ALTER INDEX {a} RENAME TO {b}"
 
   alter_index_attach_partition = "ALTER INDEX {a} ATTACH PARTITION {b};"
@@ -198,16 +178,6 @@ class PartitionQuery:
   """
 
   ## INSERT
-
-  move_rows_to_another_table = """
-      WITH moved_rows AS (
-          DELETE FROM {a}_{b} a
-          WHERE {c} >= '{d}-01-01 00:00:00' AND {c} < '{e}-01-01 00:00:00'
-          RETURNING a.*
-      )
-      INSERT INTO {a}_{d}
-      SELECT {f} FROM moved_rows;
-  """
 
   microbatch_insert = """
     INSERT INTO {a}
@@ -301,12 +271,6 @@ class PartitionQuery:
       ) AS table_existence;
   """
 
-  check_sepecific_table_count = """
-    SELECT count(*) FROM {a}
-      WHERE created_at >= '{b}-01-01 00:00:00'
-      AND created_at < '{c}-01-01 00:00:00';
-  """
-
   check_table_part_of_partition = """
     SELECT
       count(*)
@@ -318,12 +282,6 @@ class PartitionQuery:
     WHERE parent.relname='{a}'
     AND nmsp_parent.nspname = '{b}'
     AND child.relname = '{c}';
-  """
-
-  get_table_existence = """
-    SELECT count(*)
-    FROM information_schema.tables
-    WHERE table_schema='{a}' and table_name='{b}';
   """
 
   count_table_from_db = "SELECT count(*) FROM {a}"
@@ -341,23 +299,9 @@ class PartitionQuery:
       and schemaname = '{c}';
   """
 
-  get_min_table = "SELECT min({a}) FROM {b} LIMIT 1;"
-
-  get_max_table = "SELECT max({a}) FROM {b} LIMIT 1;"
-
-  get_min_max_table = "SELECT MIN({a}), MAX({a}) FROM {b};"
-
   get_min_table_new = "SELECT {a} FROM {b} ORDER BY {a} ASC LIMIT 1;"
 
   get_max_table_new = "SELECT {a} FROM {b} ORDER BY {a} DESC LIMIT 1;"
-
-  get_max_with_coalesce = "SELECT COALESCE(MAX({a}), 0) FROM {b};"
-
-  get_max_conditional_table = """
-    SELECT max({a}) FROM {b}
-      WHERE {c} >= '{d}-01-01 00:00:00' AND
-      {c} < '{e}-01-01 00:00:00';
-  """
 
   get_max_conditional_table_new = """
     SELECT {a} FROM {b}
@@ -428,6 +372,12 @@ class PartitionQuery:
 
   """
 
+  drop_table_and_function = """
+    DROP TABLE IF EXISTS {a};
+
+    DROP FUNCTION IF EXISTS {b};
+  """
+
   ## SET
 
   set_search_path = "SET search_path to '{a}';"
@@ -446,10 +396,6 @@ class PartitionQuery:
   ## LOCK
   lock_table = """
     LOCK TABLE {a} IN ACCESS EXCLUSIVE MODE;
-  """
-
-  set_isolation_serializable = """
-    SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
   """
 
   def __init__(self) -> None:

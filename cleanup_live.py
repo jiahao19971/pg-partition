@@ -6,8 +6,6 @@
   This class will not execute if the table count does not meet the requirement
   of the parent table.
 """
-import os
-import subprocess
 from multiprocessing import Process
 
 from psycopg2 import Error
@@ -44,6 +42,18 @@ class CompletionMigration(MicrobatchMigration):
       conn = conn.connect()
       logger.debug(f"Connected: {db_identifier}")
 
+      year = 2020
+      (
+        wschema_temp_partition_table,
+        wschema_parent_table,
+        wschema_default_table,
+        wschema_child_table,
+        _,
+        temp_partition_table,
+        parent_table,
+        child_table,
+      ) = self.create_naming(table, year)
+
       cur = conn.cursor()
 
       search_path = self.set_search_path.format(a=table["schema"])
@@ -51,7 +61,7 @@ class CompletionMigration(MicrobatchMigration):
       cur.execute(search_path)
 
       check_old_exist = self.check_table_exists.format(
-        a=f"{table['name']}_old", b=f"{table['schema']}"
+        a=wschema_parent_table, b=f"{table['schema']}"
       )
 
       cur.execute(check_old_exist)
@@ -59,11 +69,30 @@ class CompletionMigration(MicrobatchMigration):
       old_exist = cur.fetchone()[0]
 
       if old_exist is False:
-        logger.info("No data to migrate")
+        logger.info("Old table does not exist, no data to migrate")
         return
 
-      new_partition_parent = f'"{table["schema"]}".{table["name"]}_partitioned'
-      parent_table = f'"{table["schema"]}".{table["name"]}_old'
+      logger.info(f"Check if data exist in old table: {parent_table}")
+      check_old_data_exist = self.check_table_row_exists.format(a=parent_table)
+
+      cur.execute(check_old_data_exist)
+
+      row_exists = cur.fetchone()[0]
+
+      if row_exists is False:
+        logger.info("No data to migrate")
+
+        rename_old_to_default = self.rename_table.format(
+          a=parent_table, b=wschema_default_table
+        )
+
+        logger.info(
+          "Since table have no data, renaming old table to default table"
+        )
+        cur.execute(rename_old_to_default)
+
+        conn.commit()
+        return
 
       (
         get_min_date,
@@ -71,18 +100,6 @@ class CompletionMigration(MicrobatchMigration):
       ) = self.get_min_max_data_from_parent_partition(
         logger, table, parent_table, cur
       )
-
-      year = 2020
-      (
-        wschema_temp_partition_table,
-        wschema_parent_table,
-        _,
-        wschema_child_table,
-        _,
-        temp_partition_table,
-        parent_table,
-        child_table,
-      ) = self.create_naming(table, year)
 
       if get_min_date is None or get_max_date is None:
         logger.info("No data to migrate")
@@ -161,10 +178,10 @@ class CompletionMigration(MicrobatchMigration):
       logger.debug(f"Parent id for {parent_table}: {parent_latest_id}")
 
       logger.info(
-        f"Get latest max id from partitioned table: {new_partition_parent}"
+        f"Get latest max id from partitioned table: {temp_partition_table}"
       )
       get_latest_max_id = self.get_max_table_new.format(
-        a=table["pkey"], b=new_partition_parent
+        a=table["pkey"], b=temp_partition_table
       )
       cur.execute(get_latest_max_id)
 
@@ -175,7 +192,7 @@ class CompletionMigration(MicrobatchMigration):
         last_processed_id = last_processed_id[0]
 
       logger.debug(
-        f"Last processed id for {new_partition_parent}: {last_processed_id}"
+        f"Last processed id for {temp_partition_table}: {last_processed_id}"
       )
 
       if parent_latest_id != last_processed_id:
@@ -183,23 +200,23 @@ class CompletionMigration(MicrobatchMigration):
         logger.info("Skipping table for completion step")
         return
 
-      cur.execute(
-        f"""
-        DROP VIEW IF EXISTS {table['name']};
-
-        ALTER TABLE {new_partition_parent} RENAME TO {table['name']};
-      """
+      logger.info(f"Revert changes from view to table: {table['name']}")
+      revert_changes = self.drop_view_alter_name.format(
+        a=table["name"], b=temp_partition_table
       )
+
+      cur.execute(revert_changes)
 
       conn.commit()
 
-      cur.execute(
-        f"""
-          DROP TABLE IF EXISTS {parent_table};
-
-          DROP FUNCTION IF EXISTS {table['name']}_move_to_partitioned();
-        """
+      logger.info(
+        f"Dropping old table and trigger function for: {parent_table}"
       )
+      cleanup_changes = self.drop_table_and_function.format(
+        a=parent_table, b=f"{table['name']}_move_to_partitioned()"
+      )
+
+      cur.execute(cleanup_changes)
 
       conn.commit()
       conn.close()
@@ -235,23 +252,4 @@ class CompletionMigration(MicrobatchMigration):
 if __name__ == "__main__":
   batchrun = CompletionMigration()
   batchrun.main()
-
-  if "DEPLOYMENT" in os.environ and os.environ["DEPLOYMENT"] == "kubernetes":
-    with subprocess.Popen(
-      ["kubectl", "delete", "cm/cronjob-lock", "-n", "partitioning"],
-      stdout=subprocess.PIPE,
-      stderr=subprocess.STDOUT,
-    ) as process:
-      for line in process.stdout:
-        print(line.decode("utf-8").strip())
-
-      output = process.communicate()[0]
-
-      if process.returncode != 0:
-        print(
-          f"""Command failed. Return code : {
-          process.returncode
-        }"""
-        )
-      else:
-        print(output)
+  batchrun.cleanup_cronjob_lock()
